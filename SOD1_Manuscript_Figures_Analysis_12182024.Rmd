@@ -1,0 +1,2404 @@
+---
+title: "SOD1_Manuscript_Figures"
+author: "AxakovaA"
+date: '2024-07-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages, echo=FALSE}
+#do not change the order of these it will break the script
+library(data.table)
+library(ggplot2)
+library(mgsub)
+library(stringr)
+library(dplyr)
+library(ggpubr)
+library(tidyr)
+library(ggalluvial)
+library(RColorBrewer)
+library(ggrepel)
+library(forcats)
+library(ggvenn)
+library(patchwork)
+library(zoo)
+```
+
+##Plots
+```{r biological_replicate_agreement_abundance_assay, echo=FALSE}
+#the abundance assay was run with biological replicates composed each of three technical replicates (library preparation replicates). The technical replicates (select/nonselect log ratio R) in file can be found here for biological replicate 1: abundance_select_t1_selectionQC_Rep1.pdf, and here for biological replicate 2: abundance_select_t1_selectionQC_Rep2.
+
+#biological replicates were two independent transfection replicates.
+#abundance map
+rep_1 <- read.csv("Rep1_select_t1_simple_aa.csv", header = TRUE, comment.char = "#")
+rep_2 <- read.csv("Rep2_select_t1_simple_aa.csv", header = TRUE, comment.char = "#")
+
+#rename column
+names(rep_1)[names(rep_1) == 'score'] <- 'rep1'
+names(rep_2)[names(rep_2) == 'score'] <- 'rep2'
+
+abundance_replicates <- merge(rep_1, rep_2, by = "hgvs_pro")
+
+# Calculate R
+r_value_pear <- cor.test(abundance_replicates$rep1, abundance_replicates$rep2, method = "pearson")
+r_value_spear <- cor.test(abundance_replicates$rep1, abundance_replicates$rep2, method = "spearman")
+
+r_value_pear <- cor(abundance_replicates$rep1, abundance_replicates$rep2, method = "pearson")
+
+# Scatter plot with R value, custom captions, and line of best fit
+compare <- ggplot(abundance_replicates, aes(x=rep1, y=rep2)) + 
+  geom_point(alpha = 0.150) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "Biological replicate 1", y = "Biological replicate 2") + 
+  theme_minimal(base_size = 15) + 
+  annotate("text", x = max(abundance_replicates$rep1), y = min(abundance_replicates$rep2), 
+           label = paste("R = ", round(r_value_pear, 2)), hjust = 1)
+
+print(compare)
+ggsave(compare, device = "pdf", filename = "abundance_biorep_comparison.pdf", width = 5, height = 5)
+
+#draw for SOD1A and SOD1B - activity map replicates
+rep_1 <- read.csv("SOD1A_unfloored.csv", header = TRUE, comment.char = "#")
+rep_2 <- read.csv("SOD1B_unfloored.csv", header = TRUE, comment.char = "#")
+
+#rename column
+names(rep_1)[names(rep_1) == 'score'] <- 'rep1'
+names(rep_2)[names(rep_2) == 'score'] <- 'rep2'
+
+activity_replicates <- merge(rep_1, rep_2, by = "hgvs_pro")
+
+# Calculate R
+r_value_pear <- cor.test(activity_replicates$rep1, activity_replicates$rep2, method = "pearson")
+r_value_spear <- cor.test(activity_replicates$rep1, activity_replicates$rep2, method = "spearman")
+
+r_value_pear <- cor(activity_replicates$rep1, activity_replicates$rep2, method = "pearson")
+
+# Scatter plot with R value, custom captions, and line of best fit
+compare <- ggplot(activity_replicates, aes(x=rep1, y=rep2)) + 
+  geom_point(alpha = 0.150) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "Biological replicate 1", y = "Biological replicate 2") + 
+  theme_minimal(base_size = 15) + 
+  annotate("text", x = max(activity_replicates$rep1), y = min(activity_replicates$rep2), 
+           label = paste("R = ", round(r_value_pear, 2)), hjust = 1)
+
+print(compare)
+ggsave(compare, device = "pdf", filename = "activity_biorep_comparison.pdf", width = 5, height = 5)
+```
+
+```{r merge_abundance_biological_replicates}
+#biological replicates for abundance were merged with mergeMaps function as part of Jochen Weile's tileSeqMAVE pipeline and see methods for error calculation (https://github.com/rothlab/docs/wiki/%5BTileseq%5D-Tileseq-Best-practices)
+```
+
+```{r load_merged_maps, echo=FALSE}
+setwd("~/Desktop/SOD1_Manuscript")
+abundance <- read.csv("merged_map_unfloored.csv")
+activity <- read.csv("SOD1A_unfloored.csv")
+
+#identify position of each variant and save files for main supplemental file
+regexp <- "[[:digit:]]+"
+activity_tosave <- activity
+abundance_tosave <- abundance
+activity_tosave$pos <- as.numeric(str_extract(activity_tosave$hgvs_pro, regexp))
+abundance_tosave$pos <- as.numeric(str_extract(abundance_tosave$hgvs_pro, regexp))
+
+#order file by position
+activity_tosave <- activity_tosave[order(activity_tosave$pos),]
+abundance_tosave <- abundance_tosave[order(abundance_tosave$pos),]
+#save files
+write.csv(activity_tosave, "activity_wPos.csv", row.names = FALSE)
+write.csv(abundance_tosave, "abundance_wPos.csv", row.names = FALSE)
+```
+
+```{r variant_coverage_calculation}
+#extract missense variants
+missense_variants_activity <- activity[!(grepl("Ter", activity$hgvs_pro)|grepl("=", activity$hgvs_pro)),]
+missense_variants_abundance <- abundance[!(grepl("Ter", abundance$hgvs_pro)|grepl("=", abundance$hgvs_pro)),]
+
+#number of missense variants detected
+print(paste("no. activity missense variants captured were", nrow(missense_variants_activity), sep = " "))
+print(paste("no. abundance missense variants captured were", nrow(missense_variants_abundance), sep = " "))
+
+```
+
+```{r percent_damaging, fig.show="hold", out.width="50%", echo=FALSE}
+#histogram of missense variants for activity
+activity_dist_missense <- ggplot(missense_variants_activity, aes(x=score)) + 
+  geom_histogram(bins = 70)+
+  theme_minimal(base_size = 15)
+#histogram of missense variants for abundance
+abundance_dist_missense <- ggplot(missense_variants_abundance, aes(x=score)) + 
+  geom_histogram(bins = 70)+
+  theme_minimal(base_size = 15)
+
+#print to console
+print(activity_dist_missense)
+print(abundance_dist_missense)
+
+#save plots
+ggsave(activity_dist_missense, device = "pdf", filename = "activity_dist_missense.pdf", width = 5, height = 5)
+ggsave(abundance_dist_missense, device = "pdf", filename = "abundance_dist_missense.pdf", width = 5, height = 5)
+
+#identify percentage of missense variants in the "damaging" peak
+#find the minimum score between 0 and 1, and identify proportion of variants lower than this cutoff
+min_activity_central <- missense_variants_activity[missense_variants_activity$score < 1 & missense_variants_activity$score > 0,]
+cutoff_activity <- min(min_activity_central$score)
+
+damaging_variants_activity <- missense_variants_activity[missense_variants_activity$score <= cutoff_activity,]
+percentage_damaging_activity <- nrow(damaging_variants_activity) / nrow(missense_variants_activity) * 100
+
+print(paste("The percentage of missense variants in the 'damaging' peak for activity is: ", round(percentage_damaging_activity, 0), "%"))
+
+#repeat the same process for abundance
+min_abundance_central <- missense_variants_abundance[missense_variants_abundance$score < 1 & missense_variants_abundance$score > -1,]
+cutoff_abundance <- min(min_abundance_central$score)
+
+damaging_variants_abundance <- missense_variants_abundance[missense_variants_abundance$score <= cutoff_abundance,]
+percentage_damaging_abundance <- nrow(damaging_variants_abundance) / nrow(missense_variants_abundance) * 100
+
+print(paste("The percentage of missense variants in the 'damaging' peak for abundance is: ", round(percentage_damaging_abundance, 0), "%"))
+```
+
+```{r nonsense_synonymous_distributions, fig.show="asis", out.width="50%", echo=FALSE}
+#subset only synon and nonsense
+activity_filtered <- activity %>%
+  filter(grepl("=", hgvs_pro) | grepl("Ter", hgvs_pro))
+#draw histograms
+acti_non_synon <- ggplot(activity_filtered, aes(x = score, fill = ifelse(grepl("=", hgvs_pro), "Synonymous", "Nonsense"))) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.5, position = "identity", color = NA) + 
+  scale_fill_manual(values = c("magenta", "green"), name = "") + 
+  theme_minimal(base_size = 15)
+
+#subset only synon and nonsense
+abundance_filtered <- abundance %>%
+  filter(grepl("=", hgvs_pro) | grepl("Ter", hgvs_pro))
+#draw histograms
+abun_non_synon <- ggplot(abundance_filtered, aes(x = score, fill = ifelse(grepl("=", hgvs_pro), "Synonymous", "Nonsense"))) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.5, position = "identity", color = NA) + 
+  scale_fill_manual(values = c("magenta", "green"), name = "") + 
+  theme_minimal(base_size = 15)
+
+#print to console
+print(acti_non_synon)
+print(abun_non_synon)
+
+#save plots
+ggsave(acti_non_synon, device = "pdf", filename = "activity_dist_non_synon.pdf", width = 5, height = 5)
+ggsave(abun_non_synon, device = "pdf", filename = "abundance_dist_non_synon.pdf", width = 5, height = 5)
+
+#####Draw nonsense synonymous distributions for unscaled abundance map scores too
+unscaled_abundance_map <- read.csv("autopivoted_merged_map_abundance.csv")
+
+#subset only synon and nonsense
+abundance_unscaled_filtered <- unscaled_abundance_map %>%
+  filter(grepl("=", hgvs_pro) | grepl("Ter", hgvs_pro))
+#draw histograms
+abun_non_synon_unfiltered <- ggplot(abundance_unscaled_filtered, aes(x = score, fill = ifelse(grepl("=", hgvs_pro), "Synonymous", "Nonsense"))) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.5, position = "identity", color = NA) + 
+  scale_fill_manual(values = c("magenta", "green"), name = "") + 
+  theme_minimal(base_size = 15)
+
+#print to console
+print(abun_non_synon_unfiltered)
+
+#save plots
+ggsave(abun_non_synon_unfiltered, device = "pdf", filename = "abundance_dist_unscaled_non_synon.pdf", width = 5, height = 5)
+
+```
+
+```{r overlay_histogram_scores_by_category, fig.show="asis", out.width="50%", echo=FALSE}
+#Overlay both together, then flip the missense plot in illustrator so that it mirrors the nonsense synonymous distribution
+# Set the x-axis limits
+x_axis_limits <- c(-2, 2) 
+
+#Create the plots
+#draw missense plot
+activity_dist_missense <- ggplot(missense_variants_activity, aes(x=score)) + 
+  geom_histogram(bins = 70) + 
+  theme_minimal(base_size = 15) + 
+  xlim(x_axis_limits)
+#draw nonsense/synonymous plot
+acti_non_synon <- ggplot(activity_filtered, aes(x = score, fill = ifelse(grepl("=", hgvs_pro), "Synonymous", "Nonsense"))) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.5, position = "identity", color = NA) + 
+  scale_fill_manual(values = c("magenta", "green"), name = "") + 
+  theme_minimal(base_size = 15) + 
+  xlim(x_axis_limits)
+
+#Combine the plots and print them
+activity_together_hists <- acti_non_synon / 
+  activity_dist_missense
+print(activity_together_hists)
+ggsave(activity_together_hists, device = "pdf", filename = "activity_dist_missense_non_synon.pdf", width = 5, height = 5)
+
+#Create the plots for abundance
+#expand x-axis limits
+x_axis_limits <- c(-2.5, 2) 
+abundance_dist_missense <- ggplot(missense_variants_abundance, aes(x=score)) + 
+  geom_histogram(bins = 70) + 
+  theme_minimal(base_size = 15) + 
+  xlim(x_axis_limits)
+
+abun_non_synon <- ggplot(abundance_filtered, aes(x = score, fill = ifelse(grepl("=", hgvs_pro), "Synonymous", "Nonsense"))) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.5, position = "identity", color = NA) + 
+  scale_fill_manual(values = c("magenta", "green"), name = "") + 
+  theme_minimal(base_size = 15) + 
+  xlim(x_axis_limits)
+
+#Combine the plots
+abundance_together_hists <- abun_non_synon / 
+  abundance_dist_missense
+print(abundance_together_hists)
+ggsave(abundance_together_hists, device = "pdf", filename = "abundance_dist_missense_non_synon.pdf", width = 5, height = 5)
+
+####Draw with non-rescaled scores for abundance. Activity did not need to be re-scaled.
+missense_variants_abundance_unscaled <- unscaled_abundance_map[!(grepl("Ter", unscaled_abundance_map$hgvs_pro)|grepl("=", unscaled_abundance_map$hgvs_pro)),]
+
+#Create the plots for abundance unrescaled
+#expand x-axis limits
+x_axis_limits <- c(-10, 5) 
+abundance_dist_missense_unscaled <- ggplot(missense_variants_abundance_unscaled, aes(x=score)) + 
+  geom_histogram(bins = 70) + 
+  theme_minimal(base_size = 15) + 
+  xlim(x_axis_limits)
+
+abun_non_synon_unscaled <- ggplot(abundance_unscaled_filtered, aes(x = score, fill = ifelse(grepl("=", hgvs_pro), "Synonymous", "Nonsense"))) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.5, position = "identity", color = NA) + 
+  scale_fill_manual(values = c("magenta", "green"), name = "") + 
+  theme_minimal(base_size = 15) + 
+  xlim(x_axis_limits)
+
+#Combine the plots
+abundance_together_hists_unscaled <- abun_non_synon_unscaled / 
+  abundance_dist_missense_unscaled
+print(abundance_together_hists_unscaled)
+ggsave(abundance_together_hists_unscaled, device = "pdf", filename = "abundance_dist_missense_non_synon_unscaled.pdf", width = 5, height = 5)
+```
+
+```{r abundance_vs_enzymatic_activity_correlation, echo=FALSE, fig.show="hold", out.width="50%"}
+#rename column
+both_maps <- merge(abundance, activity, by = "hgvs_pro")
+names(both_maps)[names(both_maps) == 'score.x'] <- 'abundance'
+names(both_maps)[names(both_maps) == 'score.y'] <- 'activity'
+
+#calculate R
+r_value_spear <- cor(both_maps$abundance, both_maps$activity, use = "complete.obs", method = "spearman")
+r_value_pear <- cor.test(both_maps$abundance, both_maps$activity, use = "complete.obs", method = "pearson")
+
+#calculate linear regression
+lm_model <- lm(activity ~ abundance, data = both_maps)
+summary(lm_model)
+
+lm_model <- lm(abundance ~ activity, data = both_maps)
+summary(lm_model)
+
+#scatter plot with R value
+compare <- ggplot(both_maps, aes(x=abundance, y=activity)) + 
+  geom_point(alpha = 0.150) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "abundance map functional score", y = "enzymatic activity map functional score") + 
+  theme_minimal(base_size = 21) 
+ # annotate("text", x = max(both_maps$abundance), y = min(both_maps$activity), 
+          # label = paste("R = ", round(r_value_spear, 2)), hjust = 1)
+
+print(compare)
+ggsave(compare, device = "pdf", filename = "map_correlation.pdf", width = 6, height = 5)
+
+#extract high and low abundance scores and draw histograms corresponding to activity scores
+high_abundance <- both_maps[both_maps$abundance>0.5,]
+low_abundance <- both_maps[both_maps$abundance<=0.5,]
+
+# Combine high_abundance and low_abundance into a single data frame
+high_abundance$group <- "High Abundance"
+low_abundance$group <- "Low Abundance"
+
+combined_data <- rbind(high_abundance, low_abundance)
+
+# Plot combined density with customized lines and no fill
+combined_density_plot <- ggplot(combined_data, aes(x = activity, color = group, linetype = group)) + 
+  geom_density(size = 1.2, fill = NA) +  # No fill for density plots
+  labs(x = "Activity Score", 
+       y = "Density") +
+  scale_color_manual(values = c("High Abundance" = "#A567AB", "Low Abundance" = "#A567AB")) + 
+  scale_linetype_manual(values = c("High Abundance" = "solid", "Low Abundance" = "dashed")) + 
+     theme_minimal(base_size = 21) +
+  theme(legend.title = element_blank(), 
+        legend.position = "top")  # Move the legend to the top
+
+#print plot
+print(combined_density_plot)
+
+#plot combined density with proportions
+combined_density_plot <- ggplot(combined_data, aes(x = activity, color = group, linetype = group)) + 
+  geom_density(aes(y = ..count.. / sum(..count..)), alpha = 0.5, position = "identity", fill = NA) +  # Normalize to proportions
+  labs(x = "Activity Score", 
+       y = "Proportion") +
+  scale_color_manual(values = c("High Abundance" = "#A567AB", "Low Abundance" = "#A567AB")) + 
+  scale_linetype_manual(values = c("High Abundance" = "solid", "Low Abundance" = "dashed")) + 
+     theme_minimal(base_size = 21) +
+  theme(legend.title = element_blank(), 
+        legend.position = "top") 
+
+ggsave(combined_density_plot, device = "pdf", filename = "activityScores_of_combinedAbundance.pdf", width = 6, height = 5)
+
+#identify percentage of variants in the lower peak for activity
+#find the minimum score between 0 and 1, and identify proportion of variants lower than this cutoff
+min_activity_low_abund <- low_abundance[low_abundance$activity < 1 & low_abundance$activity > 0,]
+cutoff_activity_lowabund <- min(min_activity_low_abund$activity)
+
+lowabund_variants_activity <- low_abundance[low_abundance$activity <= cutoff_activity_lowabund,]
+percentage_lowabund_activity <- nrow(lowabund_variants_activity) / nrow(low_abundance) * 100
+
+print(paste("The percentage of variants in the 'low activity scores' peak for low abundance variants is: ", round(percentage_lowabund_activity, 0), "%"))
+
+# Repeat the same process for abundance
+min_activity_high_abund <- high_abundance[high_abundance$activity < 1 & high_abundance$activity > 0,]
+cutoff_activity_highabund <- min(min_activity_high_abund$activity)
+
+highabund_variants_activity <- high_abundance[high_abundance$activity <= cutoff_activity_highabund,]
+percentage_highabund_activity <- nrow(highabund_variants_activity) / nrow(high_abundance) * 100
+
+print(paste("The percentage of variants in the 'high activity scores' peak for high abundance variants is: ", round(percentage_highabund_activity, 0), "%"))
+```
+
+```{r thermodynamic_map_correlations, fig.show="hold", out.width="50%"}
+ddGun_scores_wMetal <- read.table("1hl5SOD1ddG.txt", header = TRUE)
+#Change variant notation to hgvs_pro for ddGun
+ddGun_scores_wMetal$VARIANT <- mgsub(ddGun_scores_wMetal$VARIANT, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                      "G", "H", "I", "L", "K", "M", "F", "P",
+                                                      "S", "T", "W", "Y", "V"), 
+                         replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                         "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                         "Met", "Phe", "Pro", "Ser",
+                                         "Thr", "Trp", "Tyr", "Val"))
+#add p. to notation
+ddGun_scores_wMetal$VARIANT <- paste0("p.", ddGun_scores_wMetal$VARIANT)
+names(ddGun_scores_wMetal)[names(ddGun_scores_wMetal) == 'VARIANT'] <- 'hgvs_pro'
+
+#function to increment the numeric part of hgvs_pro to match the HGVSpro notation
+increment_hgvs_pro <- function(hgvs_pro) {
+  num <- as.numeric(str_extract(hgvs_pro, "[0-9]+"))
+  new_num <- num + 1
+  str_replace(hgvs_pro, as.character(num), as.character(new_num))
+}
+#apply the function to the hgvs_pro column using mutate and sapply
+ddGun_scores_wMetal <- ddGun_scores_wMetal %>%
+  mutate(hgvs_pro = sapply(hgvs_pro, increment_hgvs_pro))
+#print the updated data frame
+head(ddGun_scores_wMetal)
+
+#save file for supplemental dataset file with addition of 1 in variant position no. 
+write.csv(ddGun_scores_wMetal, "ddGun_scores_1HL5_processed.csv", row.names = FALSE)
+
+#merge maps with ddGun scores 
+activity_merge_ddGun <- merge(activity, ddGun_scores_wMetal, by = "hgvs_pro", use = "complete.obs")
+abundance_merge_ddGun <- merge(abundance, ddGun_scores_wMetal, by = "hgvs_pro", use = "complete.obs")
+
+#calculate R and p-value for maps and ddGun
+cor_result_activity <- cor.test(activity_merge_ddGun$score, activity_merge_ddGun$S_DDG.3D.)
+r_value_activity <- cor_result_activity$estimate
+p_value_activity <- cor_result_activity$p.value
+
+cor_result_abundance <- cor.test(abundance_merge_ddGun$score, abundance_merge_ddGun$S_DDG.3D.)
+r_value_abundance <- cor_result_abundance$estimate
+p_value_abundance <- cor_result_abundance$p.value
+
+#scatter plot for activity assay
+compare_activity <- ggplot(activity_merge_ddGun, aes(x=score, y=S_DDG.3D.)) + 
+  geom_point(alpha = 0.250) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "enzymatic activity score", y = "ddGun score") + 
+  theme_minimal(base_size = 15) + 
+  annotate("text", x = max(activity_merge_ddGun$score), y = min(activity_merge_ddGun$S_DDG.3D.), 
+           label = paste("R = ", round(r_value_activity, 2)), hjust = 1)
+
+print(compare_activity)
+ggsave(compare_activity, device = "pdf", filename = "activity_vs_ddGun.pdf", width = 5, height = 5)
+
+#scatter plot for abundance assay
+compare_abundance <- ggplot(abundance_merge_ddGun, aes(x=score, y=S_DDG.3D.)) + 
+  geom_point(alpha = 0.250) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "abundance score", y = "ddGun score") + 
+  theme_minimal(base_size = 15) + 
+  annotate("text", x = max(abundance_merge_ddGun$score), y = min(abundance_merge_ddGun$S_DDG.3D.), 
+           label = paste("R = ", round(r_value_abundance, 2)), hjust = 1)
+
+print(compare_abundance)
+ggsave(compare_abundance, device = "pdf", filename = "abundance_vs_ddGun.pdf", width = 5, height = 5)
+
+#calculate R and p-value for maps and ddGun
+cor_result_activity_spearman <- cor.test(activity_merge_ddGun$score, activity_merge_ddGun$S_DDG.3D., method = "spearman")
+cor_result_abundance_spearman <- cor.test(abundance_merge_ddGun$score, abundance_merge_ddGun$S_DDG.3D., method = "spearman")
+
+cor_result_activity_spearman
+cor_result_abundance_spearman
+```
+
+```{r ddGunPlot, fig.show="hold", out.width="50%", echo=FALSE}
+#filter for maps and ddG hgvs_pro column, removing nonsense and synonymous variants
+filter_data <- function(df) {df[!grepl("=|Ter", df$hgvs_pro), ]}
+
+#maps are in datatable form so change to df
+abundance <- as.data.frame(abundance)
+activity <- as.data.frame(activity)
+
+#extract no only missense variants
+AbundanceOutputNoStop <- filter_data(abundance)
+ActivityOutputNoStop <- filter_data(activity)
+ddGOutputNoStop <- ddGun_scores_wMetal[!grepl("(\\w{3})(\\d+)\\1", ddGun_scores_wMetal$hgvs_pro), ]
+names(ddGOutputNoStop)[names(ddGOutputNoStop) == 'S_DDG.3D.'] <- 'score'
+# Calculate mean scores for each position
+positions <- 1:153
+mean_scores <- function(df, positions) sapply(positions, function(i) mean(df$score[grepl(i, df$hgvs_pro)], na.rm = TRUE))
+Abundance_scores <- mean_scores(AbundanceOutputNoStop, positions)
+Activity_scores <- mean_scores(ActivityOutputNoStop, positions)
+ddG_scores <- mean_scores(ddGOutputNoStop, positions)
+# Form dataframes
+scores_df <- function(scores, metric) data.frame(position = positions, Score = scores)
+Abundance_scores_df <- scores_df(Abundance_scores, "Abundance")
+Activity_scores_df <- scores_df(Activity_scores, "Activity")
+ddG_scores_df <- scores_df(ddG_scores, "ddG")
+# Apply moving window analysis
+moving_window_analysis <- function(data, score_column, rolling_column, window_size = 10) {
+  data[[rolling_column]] <- rollapply(data[[score_column]], width = window_size, FUN = mean, fill = NA, align = "center")
+  data
+}
+mwAbundance <- moving_window_analysis(Abundance_scores_df, "Score", "Abundance")
+mwActivity <- moving_window_analysis(Activity_scores_df, "Score", "Activity")
+mwddG <- moving_window_analysis(ddG_scores_df, "Score", "ddG")
+# Combine into a single dataframe (only keep position and rolling means for plotting)
+combined_data <- merge(merge(mwAbundance, mwActivity, by = "position"), mwddG, by = "position")[, c("position", "Abundance", "Activity", "ddG")]
+# Reshape for ggplot
+combined_data_long <- melt(combined_data, id.vars = "position", variable.name = "Metric", value.name = "Score")
+# Plot rolling window data
+rolling_mean_plot <- ggplot(combined_data_long, aes(x = position, y = Score, color = Metric)) +
+  geom_line(size = 0.5) +
+  facet_wrap(~Metric, scales = "free_y", ncol = 1) +
+  theme_minimal() +
+  labs(x = "Position", y = "Pos. Mean Score (Moving Average per 10 AA)", color = "Metric") +
+  geom_vline(xintercept = seq(25, 150, by = 25), color = "grey", linetype = "dotted") +
+  theme(panel.grid.major.x = element_line(color = "grey", linetype = "dotted"),strip.text = element_blank() )
+print(rolling_mean_plot)
+# Prepare positional/residue data
+dot_data <- rbind(
+  data.frame(position = Abundance_scores_df$position, score = Abundance_scores_df$Score, Metric = "Abundance"),
+  data.frame(position = Activity_scores_df$position, score = Activity_scores_df$Score, Metric = "Activity"),
+  data.frame(position = ddG_scores_df$position, score = ddG_scores_df$Score, Metric = "ddG")
+)
+# Filter ddG scores to be > -0.1 (considered neutral)
+ddG_filtered_positions <- dot_data$position[dot_data$Metric == "ddG" & dot_data$score > -0.1]
+
+# Filter raw scores for Activity and Abundance based on filtered ddG positions
+dot_data <- dot_data[dot_data$position %in% ddG_filtered_positions, ]
+# Plot map scores where ddG is at least neutral
+dot_plot <- ggplot(dot_data, aes(x = position, y = score, color = Metric)) +
+  geom_point(size = 1) +
+  facet_wrap(~Metric, scales = "free_y", ncol = 1) +
+  theme_minimal() +
+  labs(x = "Position", y = "median scores where predicted ΔΔG > 0", color = "Metric") +
+  scale_x_continuous(minor_breaks = NULL, breaks = c(25, 50, 75, 100, 125, 150), limits = c(0, 155), expand = c(0, 0)) +  # Set x-axis breaks, limits, and remove expansion
+  theme(panel.grid.major.x = element_line(color = "grey", linetype = "dotted"),strip.text = element_blank() )
+print(dot_plot)
+```
+
+```{r function to process map to change variant format and only keep missense variants}
+#[anna stopped here]
+process_map <- function(map) {
+  # Extract missense mutations
+  map_missense <- map[!(grepl("=", map$hgvs_pro) | grepl("Ter", map$hgvs_pro)),]
+  
+  # Extract 'from' column
+  map_missense$from <- substr(map_missense$hgvs_pro, 3, 5)
+  
+  # Extract position using regular expression
+  regexp <- "[[:digit:]]+"
+  map_missense$pos <- str_extract(map_missense$hgvs_pro, regexp)
+  
+  # Annotate by amino acid type
+map_missense <- map_missense %>% mutate(aa_type_From = case_when(
+    from %in% c("Ala", "Gly", "Val", "Leu", "Ile", "Met", "Phe", "Trp", "Tyr") ~ "hydrophobic",
+    from %in% c("Ser", "Thr", "Asn", "Gln", "Cys") ~ "polar",
+    from %in% c("Asp", "Glu", "Arg", "Lys", "His") ~ "charged",
+    from %in% c("Pro") ~ "proline",
+    TRUE ~ "unknown"
+  ))
+
+  # Add column for 'change To'
+  map_missense$changeTo <- substr(map_missense$hgvs_pro, nchar(map_missense$hgvs_pro) - 2, nchar(map_missense$hgvs_pro))
+  
+  # Annotate by amino acid type for 'change To'
+  map_missense <- map_missense %>%
+    mutate(aa_type_To = case_when(
+      changeTo %in% c("Ala", "Gly", "Val", "Leu", "Ile", "Met", "Phe", "Trp", "Tyr") ~ "hydrophobic",
+      changeTo %in% c("Ser", "Thr", "Asn", "Gln", "Cys") ~ "polar",
+      changeTo %in% c("Asp", "Glu") ~ "neg_charged",
+      changeTo %in% c("Arg", "Lys", "His") ~ "pos_charged",
+      changeTo %in% c("Pro") ~ "proline",
+      TRUE ~ "unknown"
+    ))
+  
+  return(map_missense)
+}
+
+activity_processed <- process_map(activity)
+abundance_processed <- process_map(abundance)
+```
+
+```{r amino acid substitutions from and to amino acid type functions}
+##############Function: draw from which amino acid############
+analyze_data_FROM <- function(data, title, width, height) {
+  #remove conservatives
+  data <- data[data$aa_type_To != data$aa_type_From,]
+  # Create the initial plot
+  p <- ggplot(data, aes(x = aa_type_From, y = score)) + 
+    geom_boxplot(outlier.size = 0.3) +
+    labs(x = "from amino acid type", y = "variant functional score") +
+    theme_minimal(base_size = 17)
+  
+  # Get all unique categories
+  categories <- unique(data$aa_type_From)
+  
+  # Initialize an empty dataframe to store the results
+  results <- data.frame(Category1 = character(), Category2 = character(), 
+                        p.value = numeric(), estimate = numeric(), 
+                        Median1 = numeric(), Median2 = numeric(), stringsAsFactors = FALSE)
+  
+  # List to store comparisons for stat_compare_means
+  comparisons <- list()
+  
+  # Loop through each combination of two categories
+  for(i in 1:(length(categories)-1)){
+    for(j in (i+1):length(categories)){
+      category1 <- categories[i]
+      category2 <- categories[j]
+      
+      # Subset the data for the two categories
+      category1_data <- data[data$aa_type_From == category1,]
+      category2_data <- data[data$aa_type_From == category2,]
+      
+      # Perform the Wilcoxon test
+      test_result <- wilcox.test(category1_data$score, category2_data$score, 
+                                 mu=0, alt="two.sided", conf.int=T, conf.level = 0.95, 
+                                 paired=F, correct=T)
+      
+      # Extract the p-value and estimate
+      p_value <- test_result$p.value
+      estimate <- test_result$estimate
+      
+      # Calculate medians
+      median1 <- median(category1_data$score, na.rm = TRUE)
+      median2 <- median(category2_data$score, na.rm = TRUE)
+      
+      # Add the results to the dataframe
+      results <- rbind(results, data.frame(Category1 = category1, Category2 = category2, 
+                                           p.value = p_value, estimate = estimate, 
+                                           Median1 = median1, Median2 = median2))
+    }
+  }
+  
+  # Apply the Bonferroni correction
+  results$p.value <- p.adjust(results$p.value, method = "bonferroni")
+  
+  # Filter only significant results
+  sig_results <- results[results$p.value < 0.05,]
+  
+  # Write significant results to file
+  write.csv(file = paste0(title, ".csv"), sig_results, row.names = FALSE)
+  
+  # Add significance bars to the plot for significant results
+  if (nrow(sig_results) > 0) {
+    sig_comparisons <- mapply(function(cat1, cat2) c(cat1, cat2), 
+                              sig_results$Category1, sig_results$Category2, 
+                              SIMPLIFY = FALSE)
+    p <- p + stat_compare_means(comparisons = sig_comparisons, method = "wilcox.test", 
+                                label = "p.signif", p.adjust.method = "bonferroni")
+  }
+  
+  # Print the plot to PDF
+  ggsave(p, device = "pdf", filename = paste0(title, ".pdf"), width = width, height = height)
+
+  # Print the plot to the console
+  print(p)
+  
+  # Print the medians
+  cat("Medians of categories:\n")
+  for(category in categories) {
+    median_value <- median(data[data$aa_type_From == category,]$score, na.rm = TRUE)
+    cat("Category:", category, "Median:", median_value, "\n")
+  }
+}
+```
+
+
+```{r generate_plot_FROM_amino_acid_type_activity, fig.show="hold", out.width="50%"}
+analyze_data_FROM(activity_processed, "activity missense score FROM amino acid type", width = 6, height = 6)
+analyze_data_FROM(abundance_processed, "abundance missense score FROM amino acid type", width = 6, height = 6)
+```
+
+```{r simplified function: from which amino acid category to all else}
+analyze_data_FROM_simple <- function(data, from_category, pdf_filename, csv_filename) {
+  df_name <- deparse(substitute(data))
+  
+  # Create a simple category variable
+  data <- data %>%
+    mutate(aa_type_To_Simple = ifelse(aa_type_To == from_category, from_category, paste("not", from_category, sep = " ")))
+  
+  # Set the order of the factor levels for boxplot
+  data$aa_type_To_Simple <- factor(data$aa_type_To_Simple, levels = c(from_category, paste("not", from_category, sep = " ")))
+
+  categories <- levels(data$aa_type_To_Simple)  # Use levels to ensure the correct order
+  
+  results <- data.frame(Category1 = character(), Category2 = character(), p.value = numeric(), estimate = numeric())
+  comparisons <- list()
+  
+  for(i in 1:(length(categories)-1)){
+    for(j in (i+1):length(categories)){
+      category1 <- categories[i]
+      category2 <- categories[j]
+      
+      category1_data <- data %>% filter(aa_type_To_Simple == category1)
+      category2_data <- data %>% filter(aa_type_To_Simple == category2)
+      
+      test_result <- wilcox.test(category1_data$score, category2_data$score, 
+                                 mu=0, alt="two.sided", conf.int=T, conf.level = 0.95, 
+                                 paired=F, correct=T)
+      
+      p_value <- test_result$p.value
+      estimate <- test_result$estimate
+      
+      results <- rbind(results, data.frame(Category1 = category1, Category2 = category2, p.value = p_value, estimate = estimate))
+      comparisons <- append(comparisons, list(c(category1, category2)))
+    }
+  }
+  
+  n_tests <- nrow(results)
+  results$p.value <- p.adjust(results$p.value, method = "bonferroni")
+  
+  sig_results <- results[results$p.value < 0.05,]
+  
+  write.csv(sig_results, file = csv_filename, row.names = FALSE)
+  
+  cat("Medians of categories:\n")
+  for(category in categories) {
+    median_value <- median(data[data$aa_type_To_Simple == category,]$score, na.rm = TRUE)
+    cat("Category:", category, "Median:", median_value, "\n")
+  }
+  
+  # Draw the plot
+  p <- ggplot(data, aes(x = aa_type_To_Simple, y = score)) + 
+    geom_boxplot(outlier.size = 0.3) + 
+    labs(title = paste(df_name, "map from", from_category), x = "change to", y = "variant functional score") +
+    theme_minimal(base_size = 17)
+  
+  # Add significance bars
+  if (nrow(sig_results) > 0) {
+    sig_comparisons <- comparisons[as.logical(results$p.value < 0.05)]
+    p <- p + stat_compare_means(comparisons = sig_comparisons, method = "wilcox.test", 
+                                label = "p.signif", p.adjust.method = "bonferroni")
+  }
+  
+  # Save plot
+  ggsave(p, device = "pdf", filename = pdf_filename, width = 3, height = 6)
+  
+  # Print plot to console
+  print(p)
+}
+```
+
+```{r run_from_activity_map, fig.show="hold", out.width="50%"}
+analyze_data_FROM_simple(activity_processed, "polar", "activity_FROM_polar_TO_others_simplified.pdf", "activity_FROM_polar_TO_others_simplified.csv")
+analyze_data_FROM_simple(activity_processed, "hydrophobic", "activity_FROM_hydrophobic_TO_others_simplified.pdf", "activity_FROM_hydrophobic_TO_others_simplified.csv")
+```
+
+```{r run_from_abundance_map, fig.show="hold", out.width="50%", echo = FALSE}
+analyze_data_FROM_simple(abundance_processed, "polar", "abundance_FROM_polar_TO_others_simplified.pdf", "abundance_FROM_polar_TO_others_simplified.csv")
+analyze_data_FROM_simple(abundance_processed, "hydrophobic", "abundance_FROM_hydrophobic_TO_others_simplified.pdf", "abundance_FROM_hydrophobic_TO_others_simplified.csv")
+```
+
+```{r function_to_amino_acid_simplified, echo = FALSE, fig.show="hold", out.width="50%", echo = FALSE}
+analyze_data_TO_simple <- function(data, To_category, pdf_filename, csv_filename) {
+  df_name <- deparse(substitute(data))
+  
+  # Remove conservatives
+  data <- data[data$aa_type_To != data$aa_type_From,]
+  
+  # Create a simple category variable
+  data <- data %>%
+    mutate(aa_type_To_Simple = ifelse(aa_type_To == To_category, To_category, paste("not", To_category, sep = " ")))
+
+  # Set the order of the factor levels for boxplot
+  data$aa_type_To_Simple <- factor(data$aa_type_To_Simple, levels = c(To_category, paste("not", To_category, sep = " ")))
+
+  # Create the boxplot
+  p <- ggplot(data, aes(x = aa_type_To_Simple, y = score)) + 
+    geom_boxplot(outlier.size = 0.3) + 
+    labs(title = df_name, x = "to amino acid category", y = "variant functional score") +
+    theme_minimal(base_size = 17)
+  
+  # Get unique categories for comparisons
+  categories <- levels(data$aa_type_To_Simple)  # Use levels to ensure the correct order
+  
+  # Initialize results dataframe
+  results <- data.frame(Category1 = character(), Category2 = character(), p.value = numeric(), estimate = numeric())
+  comparisons <- list()
+  
+  # Perform pairwise comparisons
+  for(i in 1:(length(categories) - 1)){
+    for(j in (i + 1):length(categories)){
+      category1 <- categories[i]
+      category2 <- categories[j]
+      
+      category1_data <- data %>% filter(aa_type_To_Simple == category1)
+      category2_data <- data %>% filter(aa_type_To_Simple == category2)
+      
+      test_result <- wilcox.test(category1_data$score, category2_data$score, 
+                                 mu = 0, alt = "two.sided", conf.int = TRUE, conf.level = 0.95, 
+                                 paired = FALSE, correct = TRUE)
+      
+      p_value <- test_result$p.value
+      estimate <- test_result$estimate
+      
+      results <- rbind(results, data.frame(Category1 = category1, Category2 = category2, p.value = p_value, estimate = estimate))
+      comparisons <- append(comparisons, list(c(category1, category2)))
+    }
+  }
+  
+  # Apply Bonferroni correction
+  results$p.value <- p.adjust(results$p.value, method = "bonferroni")
+  
+  # Print results
+  print(results)
+  
+  # Filter significant results
+  sig_results <- results[results$p.value < 0.05,]
+  
+  # Write significant results to CSV
+  write.csv(sig_results, file = csv_filename, row.names = FALSE)
+  
+  # Print medians of categories
+  cat("Medians of categories:\n")
+  for(category in categories) {
+    median_value <- median(data[data$aa_type_To_Simple == category,]$score, na.rm = TRUE)
+    cat("Category:", category, "Median:", median_value, "\n")
+  }
+  
+  # Add significance bars if there are significant results
+  if (nrow(sig_results) > 0) {
+    sig_comparisons <- comparisons[results$p.value < 0.05]
+    p <- p + stat_compare_means(comparisons = sig_comparisons, method = "wilcox.test", 
+                                label = "p.signif", p.adjust.method = "bonferroni")
+  }
+  
+  # Save plot
+  ggsave(p, device = "pdf", filename = pdf_filename, width = 3, height = 6)
+  print(p)
+}
+```
+
+```{r analyze_change_to_proline_for_both_maps, fig.show="hold", out.width="50%", echo = FALSE}
+analyze_data_TO_simple(activity_processed, "proline", "activity_to_proline.pdf", "activity_to_proline.csv")
+analyze_data_TO_simple(abundance_processed, "proline", "abundance_to_proline.pdf", "abundance_to_proline.csv")
+```
+
+```{r function to process map with both positive and negative charges}
+###########Process datasets############
+process_map_moreDetail <- function(map) {
+  # Extract missense mutations
+  map_missense <- map[!(grepl("=", map$hgvs_pro) | grepl("Ter", map$hgvs_pro)),]
+  
+  # Extract 'from' column
+  map_missense$from <- substr(map_missense$hgvs_pro, 3, 5)
+  
+  # Extract position using regular expression
+  regexp <- "[[:digit:]]+"
+  map_missense$pos <- str_extract(map_missense$hgvs_pro, regexp)
+  
+  # Annotate by amino acid type
+  map_missense <- map_missense %>%
+    mutate(aa_type_From = case_when(
+      from %in% c("Ala", "Gly", "Val", "Leu", "Ile", "Met", "Phe", "Trp", "Tyr") ~ "hydrophobic",
+      from %in% c("Ser", "Thr", "Asn", "Gln", "Cys") ~ "polar",
+      from %in% c("Asp", "Glu") ~ "neg_charged",
+      from %in% c("Arg", "Lys", "His") ~ "pos_charged",
+      from %in% c("Pro") ~ "proline",
+      TRUE ~ "unknown"
+    ))
+  
+  # Add column for 'change To'
+  map_missense$changeTo <- substr(map_missense$hgvs_pro, nchar(map_missense$hgvs_pro) - 2, nchar(map_missense$hgvs_pro))
+  
+  # Annotate by amino acid type for 'change To'
+  map_missense <- map_missense %>%
+    mutate(aa_type_To = case_when(
+      changeTo %in% c("Ala", "Gly", "Val", "Leu", "Ile", "Met", "Phe", "Trp", "Tyr") ~ "hydrophobic",
+      changeTo %in% c("Ser", "Thr", "Asn", "Gln", "Cys") ~ "polar",
+      changeTo %in% c("Asp", "Glu") ~ "neg_charged",
+      changeTo %in% c("Arg", "Lys", "His") ~ "pos_charged",
+      changeTo %in% c("Pro") ~ "proline",
+      TRUE ~ "unknown"
+    ))
+  
+  return(map_missense)
+}
+
+```
+
+```{r process map with both pos and neg charges}
+activity_processed_neg <- process_map_moreDetail(activity)
+abundance_processed_neg <- process_map_moreDetail(abundance)
+```
+
+``` {r negatively_charged_amino_acids, fig.show="hold", out.width="50%", echo = FALSE}
+analyze_data_TO_simple(activity_processed_neg, "neg_charged", "activity_to_negCharge.pdf", "activity_to_negCharge.csv")
+analyze_data_TO_simple(abundance_processed_neg, "neg_charged", "abundance_to_negCharge.pdf", "abundance_to_negCharge.csv")
+```
+
+```{r choose_fasa_cutoffs_mature_SOD1, echo = FALSE}
+#process sasa scores
+sasa_scores_full <-read.table("SOD1_sasa_1HL5.txt")
+freesasa_data <- data.frame(sasa_scores_full$V2, sasa_scores_full$V4, sasa_scores_full$V6)
+#add one to freesasa data to adjust for amino acid position difference (met should be 1 not ala)
+freesasa_data$sasa_scores_full.V4 <- freesasa_data$sasa_scores_full.V4+1 
+
+names(freesasa_data)[names(freesasa_data) == "sasa_scores_full.V6"] <- "sasa"
+names(freesasa_data)[names(freesasa_data) == "sasa_scores_full.V4"] <- "from_aa"
+names(freesasa_data)[names(freesasa_data) == "sasa_scores_full.V2"] <- "from_aa_code"
+
+#save dataset
+write.csv(freesasa_data, file = "freesasa_data_1HL5.csv", row.names = FALSE)
+
+#remove aa core not needed for rest of analysis
+freesasa_data <- freesasa_data[,c(-1)]
+
+sp <- ggplot(freesasa_data, aes(x = sasa)) +
+  geom_histogram(binwidth = 5, fill = "grey", color = "black") +
+  geom_vline(xintercept = 20, color = "magenta", linetype = "dashed") +
+  geom_vline(xintercept = 35, color = "green", linetype = "dashed") +
+  labs(title = "freeSASA", x = "SASA (Å²)", y = "Frequency") +
+  theme_minimal(base_size = 15)
+
+print(sp)
+
+#plot histogram and draw lines that define core or surface based on sasa score
+ggsave(sp, filename = "allatoms_rel_freesasa.pdf", width = 8, height = 5, device = "pdf")
+```
+
+```{r positional_function}
+process_positional <- function(file_path) {
+  # Read the data
+  data_table_abundance <- fread(file_path)
+  # Extract amino acid information
+  data_table_abundance[, from_aa := str_extract_all(hgvs_pro, "\\w+\\d+")]
+  data_table_abundance[, from_aa := str_extract(hgvs_pro, "\\d+")]
+  # Calculate positional mean scores
+  positional_mean_scores_abundance <- data_table_abundance[, .(score = sum(score, na.rm = TRUE) / .N), by = "from_aa"]
+  # Convert 'from_aa' to numeric
+  positional_mean_scores_abundance$from_aa <- as.numeric(positional_mean_scores_abundance$from_aa)
+  return(positional_mean_scores_abundance)
+}
+
+#save files as missense only
+all_scores_activity <- read.csv("SOD1A_unfloored.csv")
+all_scores_abundance <- read.csv("merged_map_unfloored.csv")
+
+#save files as missense variants only
+map_missense_activity <- all_scores_activity[!(grepl("=", all_scores_activity$hgvs_pro) | grepl("Ter", all_scores_activity$hgvs_pro)),]
+map_missense_abundance <- all_scores_abundance[!(grepl("=", all_scores_abundance$hgvs_pro) | grepl("Ter", all_scores_abundance$hgvs_pro)),]
+
+write.csv(map_missense_activity, "map_missense_activity.csv", row.names = FALSE)
+write.csv(map_missense_abundance, "map_missense_abundance.csv", row.names = FALSE)
+
+#find average score by position for missense variants for activity and abundance maps
+activity_positional <- process_positional("map_missense_activity.csv")
+abundance_positional <- process_positional("map_missense_abundance.csv")
+
+write.csv(activity_positional, "positional_activity_scores.csv", row.names = FALSE)
+write.csv(abundance_positional, "positional_abundance_scores.csv", row.names = FALSE)
+```
+
+```{r plot_score_by_protein_position, fig.show="hold", out.width="50%", echo = FALSE}
+# Read and preprocess ignore lists
+  ignore_AS <- read.csv("Residues_SOD1_ActiveSite.csv")
+  colnames(ignore_AS)[2] <- "from_aa"
+  ignore_AS_positions <- ignore_AS$from_aa
+  
+  ignore_DI <- read.csv("Residues_SOD1_Interface.csv")
+  colnames(ignore_DI)[2] <- "from_aa"
+  ignore_DI_positions <- ignore_DI$from_aa
+  
+  # Filter core and surface values
+  filtered_sasa20 <- freesasa_data %>% 
+    filter(sasa < 20, !from_aa %in% ignore_AS_positions, !from_aa %in% ignore_DI_positions) %>% 
+    mutate(from_aa = as.numeric(from_aa))
+  
+  filtered_sasa35 <- freesasa_data %>% 
+    filter(sasa > 35, !from_aa %in% ignore_AS_positions, !from_aa %in% ignore_DI_positions) %>% 
+    mutate(from_aa = as.numeric(from_aa))
+
+process_SASA_scores <- function(scores_data, freesasa_data, dataType) {
+  # Process scores
+  core <- merge(scores_data, filtered_sasa20, by="from_aa") %>% 
+    select(-c(sasa))
+  write.csv(core, paste0("SOD1_", "activity", "_core_freesasa.csv"))
+  
+  surface <- merge(scores_data, filtered_sasa35, by="from_aa") %>% 
+    select(-c(sasa))
+  write.csv(surface, paste0("SOD1_", "activity", "_Surface_freesasa.csv"))
+  
+  IgnoreAS <- merge(scores_data, ignore_AS, by="from_aa") %>% 
+    select(-c(hgvs_pro, Metal))
+  write.csv(IgnoreAS, paste0("SOD1_", "activity", "_ActiveSite_freesasa.csv"))
+  
+  IgnoreDI <- merge(scores_data, ignore_DI, by="from_aa") %>% 
+    select(-c(hgvs_pro))
+  write.csv(IgnoreDI, paste0("SOD1_", dataType, "_Interface_freesasa.csv"))
+  
+  # Combine files
+  combined <- merge(core, surface, by="from_aa", all=TRUE, suffixes=c("_Core", "_Surface")) %>% 
+    merge(IgnoreAS, by="from_aa", all=TRUE, suffixes=c("", "_Metal_Binding")) %>% 
+    merge(IgnoreDI, by="from_aa", all=TRUE, suffixes=c("", "_Interface"))
+  
+  # Rename columns
+  colnames(combined)[2:5] <- c("Core", "Surface", "Metal_Binding", "Interface")
+  write.csv(combined[,2:5], paste0("SOD1_", dataType, "_combined_freesasa.csv"), row.names = FALSE)
+  
+  # Load combined data for plotting
+  combined_data <- read.csv(paste0("SOD1_", dataType, "_combined_freesasa.csv"))
+  
+  combined_long <- combined_data %>% 
+    pivot_longer(everything(), names_to = "Structure_Type", values_to = "score") %>% 
+    na.omit()  # Remove rows with NA values
+
+# Reorder the Structure_Type factor levels
+combined_long$Structure_Type <- factor(combined_long$Structure_Type, levels = c("Surface", "Interface", "Core", "Metal_Binding"))
+
+   # Print medians to console
+  print("Medians:")
+  print(paste("Core:", median(combined_data$Core, na.rm = TRUE)))
+  print(paste("Surface:", median(combined_data$Surface, na.rm = TRUE)))
+  print(paste("Interface:", median(combined_data$Interface, na.rm = TRUE)))
+  print(paste("Metal_Binding:", median(combined_data$Metal_Binding, na.rm = TRUE)))
+  
+  
+  # Create the boxplot
+  p <- ggplot(combined_long, aes(x = Structure_Type, y = score)) + 
+    geom_boxplot(outlier.shape = NA) + 
+    labs(x = "location", y = "score") + 
+    theme_minimal(base_size = 17)
+  
+# Perform the significance tests
+sig_tests <- compare_means(score ~ Structure_Type, data = combined_long, 
+                             method = "wilcox.test", p.adjust.method = "bonferroni")
+
+# Filter significant results
+sig_tests <- sig_tests %>% filter(p.adj < 0.05)
+
+# Save the significant hits to a CSV file
+  if (nrow(sig_tests) > 0) {
+    write.csv(sig_tests, paste0("SOD1_", dataType, "_positional_significant_hits.csv"), row.names = FALSE)
+  }
+
+# Create a list of significant comparisons
+significant_comparisons <- list()
+for (i in 1:nrow(sig_tests)) {
+  comparison <- c(sig_tests$group1[i], sig_tests$group2[i])
+  significant_comparisons <- c(significant_comparisons, list(comparison))
+}
+
+# Add significance bars to the plot if there are significant comparisons
+if (nrow(sig_tests) > 0) {
+  p <- p + stat_compare_means(comparisons = significant_comparisons, method = "wilcox.test", label = "p.signif", 
+                                 hide.ns = TRUE)
+}
+  
+  # Print the plot with significance bars
+  print(p)
+  
+  # Save the plot to a PDF file
+  ggsave(filename = paste0("SOD1_", dataType, "_freesasa_boxplot.pdf"), height = 4, width = 5, device = "pdf")
+}
+      
+#evaluate activity and abundance maps
+process_SASA_scores(activity_positional, freesasa_data, "activity")
+process_SASA_scores(abundance_positional, freesasa_data, "abundance")
+
+#how much of core is hydrophobic positions?
+#identify hydrophobic positions
+hydrophobic_positions <- unique(activity_processed$pos[activity_processed$aa_type_From == "hydrophobic"])
+#how much of core is hydrophobic
+length(intersect(filtered_sasa20$from_aa, hydrophobic_positions))/nrow(filtered_sasa20)
+#how much of SOD1 is hydrophobic total (154 aa total)
+length(hydrophobic_positions)/154
+```
+
+Section 2.6
+```{r genotype_phenotype, fig.show="hold", out.width="50%", echo=FALSE}
+# Read in the data
+paper_data <- read.csv("CorrelationDataPMC11138100.csv")
+# Process the data
+paper_data$hgvs_pro <- mgsub(paper_data$hgvs_pro, 
+                             pattern = c("A", "R", "N", "D", "C", "Q", "E", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"), 
+                             replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln", "Glu", "Gly", "His", "Ile", "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val"))
+paper_data$hgvs_pro <- paste0("p.", paper_data$hgvs_pro)
+
+# Rename for merging
+activity_map_genopheno <- activity
+abundance_map_genopheno <- abundance
+
+names(activity_map_genopheno)[names(activity_map_genopheno) == "score"] <- 'activity_score'
+activity_map_genopheno <- activity_map_genopheno %>% select(-c("se", "df"))
+
+names(abundance_map_genopheno)[names(abundance_map_genopheno) == "score"] <- 'abundance_score'
+abundance_map_genopheno <- abundance_map_genopheno %>% select(-c("se", "df", "sd"))
+
+merged <- merge(abundance_map_genopheno, paper_data, by = "hgvs_pro", all.y = TRUE)
+merged <- merge(merged, activity_map_genopheno, by = "hgvs_pro", all.x = TRUE)
+
+#remove columns where both yeast and human are NA
+merged <- merged[!(is.na(merged$abundance_score) & is.na(merged$activity_score)),]
+
+# Define a function to plot regression lines for a given category
+plot_regression <- function(category) {
+  category_data <- merged[merged$category == category, ]
+  
+  # Calculate correlation coefficients and p-values
+  cor_human <- cor.test(category_data$paper_score, category_data$abundance_score, method = "spearman")
+  cor_yeast <- cor.test(category_data$paper_score, category_data$activity_score, method = "spearman")
+  
+  # Adjust p-values using Bonferroni method
+  num_tests <- 2  # number of tests (2 correlations per category)
+  bonferroni_adj_p_human <- p.adjust(cor_human$p.value, method = "bonferroni", n = num_tests)
+  bonferroni_adj_p_yeast <- p.adjust(cor_yeast$p.value, method = "bonferroni", n = num_tests)
+  
+  # Create the plot
+  y_axis_label <- ifelse(category == "onset", "Years", 
+                          ifelse(category == "activity", "enzymatic activity (%)", 
+                                 ifelse(category == "abundance", "protein level (%)", 
+                                        ifelse(category == "duration", "months", "hours"))))
+  
+  plot <- ggplot(category_data, aes(x = abundance_score, y = paper_score, color = "Abundance")) +
+    geom_point() +
+    geom_smooth(method = "lm", aes(x = abundance_score, y = paper_score, color = "Abundance")) +
+    geom_point(aes(x = activity_score, y = paper_score, color = "Enzymatic Activity")) +
+    geom_smooth(method = "lm", aes(x = activity_score, y = paper_score, color = "Enzymatic Activity")) +
+    labs(title = paste("Category:", category),
+         x = "Score",
+         y = y_axis_label,
+         color = "Score Type") +
+    theme_minimal(base_size = 17) +
+    theme(legend.position = "right")
+  
+  # Print correlation coefficients and p-values to console
+  cat("Category:", category, "\n")
+  cat("Abundance Correlation Coefficient:", cor_human$estimate, ", p-value:", cor_human$p.value, ", Bonferroni adj. p-value:", bonferroni_adj_p_human, "\n")
+  cat("Enzymatic Activity Correlation Coefficient:", cor_yeast$estimate, ", p-value:", cor_yeast$p.value, ", Bonferroni adj. p-value:", bonferroni_adj_p_yeast, "\n\n")
+  
+  # Save correlation coefficients and p-values to CSV file
+  correlation_data <- data.frame(Category = category, 
+                                ScoreType = c("Abundance", "Enzymatic Activity"), 
+                                CorrelationCoefficient = c(cor_human$estimate, cor_yeast$estimate), 
+                                pValue = c(cor_human$p.value, cor_yeast$p.value), 
+                                BonferroniAdjPValue = c(bonferroni_adj_p_human, bonferroni_adj_p_yeast))
+  
+  return(list(plot, correlation_data))
+}
+
+# Iterate through all categories
+categories <- unique(merged$category)
+correlation_data_list <- list()
+for (category in categories) {
+  result <- plot_regression(category)
+  print(result[[1]])
+  correlation_data_list <- c(correlation_data_list, list(result[[2]]))
+  ggsave(filename = paste("plot_", category, ".pdf", sep = ""), width = 6, height = 4, device = "pdf")
+}
+
+# Write correlation data to CSV file
+correlation_data <- do.call(rbind, correlation_data_list)
+write.csv(correlation_data, "correlation_coefficients.csv", row.names = FALSE)
+```
+```{r generate_referenceSets}
+#read in gnomAD data (extracted as of Dec 21, 2024)
+gnomAD_file <- read.csv("gnomAD_v4.1.0_ENSG00000142168_2024_12_21_18_13_00.csv", header = TRUE)
+#only extract missense variants
+gnomAD_file <- gnomAD_file[gnomAD_file$VEP.Annotation == "missense_variant",]
+#assess if variants have duplicates, confirm only one without any annotations remain for gnomAD proxy benign reference set
+duplicated_gnomAD <- gnomAD_file[duplicated(gnomAD_file$HGVS.Consequence),]
+print(duplicated_gnomAD)
+#p.Gln23His variant is duplicated, and in original dataset it both has a row without a classification and a row with. Eliminate contaminating VUS from gnomad dataset. Eliminate "p.His72Gln" which is a VUS in ClinVar but does not have annot in gnomAD
+gnomAD_file <- gnomAD_file[!gnomAD_file$HGVS.Consequence == "p.Gln23His",]
+gnomAD_file <- gnomAD_file[!gnomAD_file$HGVS.Consequence == "p.His72Gln",]
+#remove all others that have any ClinVar classification (there are no benigns anyway) 
+gnomAD_file <- gnomAD_file[gnomAD_file$ClinVar.Germline.Classification == "",]
+#format the ones that are gnomAD for appending to the reference set 
+gnomAD_negatives <- data.frame(hgvsp = gnomAD_file$Protein.Consequence, referenceSet = "Negative")
+
+#contribute Invitae or ClinVar reference sets as positives
+ClinVar_multiple_submitters <- read.csv("21Dec24_clinvar_PLP_multipleSubmitters.csv", header = TRUE)
+#convert variant names to hgvs_pro format
+ClinVar_multiple_submitters <- ClinVar_multiple_submitters$Protein.change
+ClinVar_multiple_submitters <- mgsub(ClinVar_multiple_submitters, 
+                             pattern = c("A", "R", "N", "D", "C", "Q", "E", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"), 
+                             replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln", "Glu", "Gly", "His", "Ile", "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val"))
+ClinVar_multiple_submitters <- paste0("p.", ClinVar_multiple_submitters)
+#generate positive reference set
+ClinVar_positives <- data.frame(hgvsp = ClinVar_multiple_submitters, referenceSet = "Positive")
+#read in Invitae positive reference set
+Invitae_positives <- read.csv("202501_InvitaeUpdate.csv", header = TRUE)
+#Combine into invitae vs clinvar reference sets and save these
+Invitae_gnomAD <- rbind(Invitae_positives, gnomAD_negatives)
+ClinVar_gnomAD <- rbind(ClinVar_positives, gnomAD_negatives)
+#confirm there are no duplicated variants
+duplicates_ClinVar <- ClinVar_gnomAD$hgvsp[duplicated(ClinVar_gnomAD$hgvsp)]
+duplicates_Invitae <- Invitae_gnomAD$hgvsp[duplicated(Invitae_gnomAD$hgvsp)]
+#G38R is in on Invitae and ClinVar twice as a positive because it has two disease phenotypes, make it only mentioned once
+Invitae_gnomAD <- Invitae_gnomAD[!duplicated(Invitae_gnomAD$hgvsp),]
+ClinVar_gnomAD <- ClinVar_gnomAD[!duplicated(ClinVar_gnomAD$hgvsp),]
+
+#save reference sets
+write.csv(Invitae_gnomAD, "20250204_Invitae_gnomAD_refset.csv", row.names = FALSE)
+write.csv(ClinVar_gnomAD, "20241221_ClinVar_gnomAD_refset.csv", row.names = FALSE)
+
+#try merging reference sets
+merged_refsets <- rbind(Invitae_gnomAD, ClinVar_gnomAD)
+merged_refsets <- merged_refsets[!duplicated(merged_refsets$hgvsp),]
+write.csv(merged_refsets, "merged_refsets.csv", row.names = FALSE)
+```
+
+```{r PRC_curve_intersections}
+#PRC code used for drawing plots is located here. script launched is located at bottom of this section. https://github.com/rothlab/docs/wiki/Drawing-PRC-curves
+
+#Important note: The 'map' that goes into the script needs to consider "damaging" variants the opposite direction as the predictors. The Roth lab maps consider damaging as negative, while varity, CPT, AlphaMissense consider damaging as positive. Of the predictors used, ESM1b scores consider damaging as negative, and were multiplied by -1 prior to consideration as a predictor. 
+
+#This script finds the number of negative and positive reference set variants for each reference set used since the PRC script outputs the initial reference set numbers. Calculate the correct intersection between the variants. The PRC script only uses the variants which have scores for all predictors and is found in the reference set, but prints the wrong number of refset variants on the output plot.
+
+AM <- read.csv("20240601_AM_maveDB.csv")
+CPT <- read.csv("20240601_CPT_maveDB.csv")
+#ESM scores have already been multiplied by -1 in this file
+ESM <- read.csv("20240601_ESM1B_maveDB.csv")
+VAR <- read.csv("20240601_varity_maveDB.csv")
+#remove NAs in varity
+VAR <- VAR[!is.na(VAR$score),]
+
+#read in maps
+abundance <- read.csv("merged_map_unfloored.csv")
+activity <- read.csv("SOD1A_unfloored.csv")
+
+#read in refset
+RefSetInvitae <- Invitae_gnomAD
+#rename to hgvs_pro
+colnames(RefSetInvitae)[colnames(RefSetInvitae) == "hgvsp"] <- "hgvs_pro"
+
+#find intersection between all of these in the hgvs_pro category
+#inner joins to find the intersection
+intersection_refSetInvitae <- AM %>%
+  inner_join(CPT, by = "hgvs_pro") %>%
+  inner_join(ESM, by = "hgvs_pro") %>%
+  inner_join(VAR, by = "hgvs_pro") %>%
+  inner_join(abundance, by = "hgvs_pro") %>%
+  inner_join(activity, by = "hgvs_pro") %>%
+  inner_join(RefSetInvitae, by = "hgvs_pro")
+
+#view intersection
+table(intersection_refSetInvitae$referenceSet)
+
+#save using intersection refset then re-run PRC curve
+intersection_refSetInvitae_toSave <- intersection_refSetInvitae[, c("hgvs_pro", "referenceSet")]
+colnames(intersection_refSetInvitae_toSave)[colnames(intersection_refSetInvitae_toSave) == "hgvs_pro"] <- "hgvsp"
+write.csv(intersection_refSetInvitae_toSave, "20250212_refSetInvitae_toSave.csv", row.names = FALSE)
+
+#do same with ClinVar dataset
+RefSetClinVar <- ClinVar_gnomAD
+#rename to hgvs_pro
+colnames(RefSetClinVar)[colnames(RefSetClinVar) == "hgvsp"] <- "hgvs_pro"
+
+#find joins
+intersection_clinvar <- AM %>%
+  inner_join(CPT, by = "hgvs_pro") %>%
+  inner_join(ESM, by = "hgvs_pro") %>%
+  inner_join(VAR, by = "hgvs_pro") %>%
+  inner_join(abundance, by = "hgvs_pro") %>%
+  inner_join(activity, by = "hgvs_pro") %>%
+  inner_join(RefSetClinVar, by = "hgvs_pro")
+
+#view intersection
+table(intersection_clinvar$referenceSet)
+
+#save using intersection refset then re-run PRC curve
+intersection_clinvar_toSave <- intersection_clinvar[, c("hgvs_pro", "referenceSet")]
+colnames(intersection_clinvar_toSave)[colnames(intersection_clinvar_toSave) == "hgvs_pro"] <- "hgvsp"
+write.csv(intersection_clinvar_toSave, "20250212_refSetClinVar_toSave.csv", row.names = FALSE)
+
+#launch scripts in terminal from link above for Jochen's PRC script. Here, to draw both maps on same plot, the one in the predictor section needed to be multiplied by -1.
+
+#draw PRC with invitae reference set
+#tsm drawPRC SOD1A_unfloored.csv 20250212_refSetInvitae_toSave.csv --predictors merged_map_unfloored_flipped.csv,20240601_ESM1B_maveDB.csv,20240601_AM_maveDB.csv,20240601_varity_maveDB.csv,20240601_CPT_maveDB.csv --predictorNames abundanceMap,ESM1b,alphaMissense,Varity,CPT
+
+#Or, the below is identical to the above. 
+#tsm drawPRC merged_map_unfloored.csv 20250212_refSetInvitae_toSave.csv --predictors activity_map_flipped.csv,20240601_ESM1B_maveDB.csv,20240601_AM_maveDB.csv,20240601_varity_maveDB.csv,20240601_CPT_maveDB.csv --predictorNames activityMap,ESM1b,alphaMissense,Varity,CPT
+
+#draw for clinvar reference set variants
+#tsm drawPRC merged_map_unfloored.csv 20250212_refSetClinVar_toSave.csv --predictors activity_map_flipped.csv,20240601_ESM1B_maveDB.csv,20240601_AM_maveDB.csv,20240601_varity_maveDB.csv,20240601_CPT_maveDB.csv --predictorNames activityMap,ESM1b,alphaMissense,Varity,CPT
+
+
+#How many of the refset path overlap?
+clinvar_pos <- intersection_clinvar_toSave[intersection_clinvar_toSave$referenceSet=="Positive",]
+invitae_pos <- intersection_refSetInvitae_toSave[intersection_refSetInvitae_toSave$referenceSet=="Positive",]
+
+nrow(clinvar_pos)
+nrow(invitae_pos)
+
+#create a named list with the datasets
+x <- list(clinvar = clinvar_pos$hgvsp, invitae = invitae_pos$hgvsp)
+
+Reduce(intersect, list(clinvar_pos$hgvsp,invitae_pos$hgvsp))
+
+#remove those that aren't real manually
+p <- ggvenn(x, show_elements = F, label_sep = "\n", fill_color = c("white", "white", "white"))
+ggsave(filename ="refsetOverlap.pdf", p, device = "pdf", width = 4, height =4)
+```
+
+```{r PRC_moving_window, fig.show="hold", out.width="50%", echo=FALSE}
+##Draw moving window of scores compared to reference set and compare scores to illumina SOD1 scores
+#Read libraries
+
+#read in map scores
+setwd("~/Desktop/SOD1_Manuscript/Compare_Illumina_map/")
+abundance <- read.csv("merged_map_unfloored.csv")
+activity <- read.csv("SOD1A_unfloored.csv")
+illumina <- read.table("SOD1_scores_annotations_760variants.txt", header = TRUE)
+
+#convert the codon changes to hgvs_pro for the illumina dataset
+illumina$aa_variant <- mgsub(illumina$aa_variant, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                                              "G", "H", "I", "L", "K", "M", "F", "P",
+                                                                              "S", "U", "T", "W", "Y", "V"), 
+                                     replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                                     "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                                     "Met", "Phe", "Pro", "Ser", "Sec",
+                                                     "Thr", "Trp", "Tyr", "Val"))
+#add p. to notation
+illumina$aa_variant <- paste0("p.", illumina$aa_variant)
+names(illumina)[names(illumina) == 'aa_variant'] <- 'hgvs_pro'
+
+#merge scores
+activity_w_illumina <- merge(activity, illumina, by = "hgvs_pro")
+abundance_w_illumina <- merge(abundance, illumina, by = "hgvs_pro")
+
+r_value_pear_activity <- cor(activity_w_illumina$proliferation_score, activity_w_illumina$score, method = "pearson")
+r_value_pear_abundance <- cor(abundance_w_illumina$proliferation_score, abundance_w_illumina$score, method = "pearson")
+
+r_value_spear_activity <- cor(activity_w_illumina$proliferation_score, activity_w_illumina$score, method = "spear")
+r_value_spear_abundance <- cor(abundance_w_illumina$proliferation_score, abundance_w_illumina$score, method = "spear")
+
+#calculate linear regression
+lm_model <- lm(proliferation_score ~ score, data = activity_w_illumina)
+summary(lm_model)
+
+#calculate linear regression
+lm_model <- lm(proliferation_score ~ score, data = abundance_w_illumina)
+summary(lm_model)
+
+#scatter plot for activity assay
+compare_activity_illumina <- ggplot(activity_w_illumina, aes(x=proliferation_score, y=score)) + 
+  geom_point(alpha = 0.250) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "proliferation score (Illumina)", y = "activity map functional score (ours)") + 
+  theme_minimal(base_size = 15) 
+
+print(compare_activity_illumina)
+
+#scatter plot for abundance assay
+compare_abundance_illumina <- ggplot(abundance_w_illumina, aes(x=proliferation_score, y=score)) + 
+  geom_point(alpha = 0.250) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "proliferation score (Illumina)", y = "abundance map functional score (ours)") + 
+  theme_minimal(base_size = 15) 
+
+print(compare_abundance_illumina)
+
+ggsave(compare_activity_illumina, device = "pdf", filename = "activity_vs_illuminaProlif.pdf", width = 5, height = 5)
+ggsave(compare_abundance_illumina, device = "pdf", filename = "abundance_vs_illuminaProlif.pdf", width = 5, height = 5)
+
+#Use their other score type but need to change scores to positional for both ours and illumina
+process_positional <- function(file_path) {
+  # Read the data
+  data_table_abundance <- fread(file_path)
+  # Extract amino acid information
+  data_table_abundance[, from_aa := str_extract_all(hgvs_pro, "\\w+\\d+")]
+  data_table_abundance[, from_aa := str_extract(hgvs_pro, "\\d+")]
+  # Calculate positional mean scores
+  positional_mean_scores_abundance <- data_table_abundance[, .(score = sum(score, na.rm = TRUE) / .N), by = "from_aa"]
+  # Convert 'from_aa' to numeric
+  positional_mean_scores_abundance$from_aa <- as.numeric(positional_mean_scores_abundance$from_aa)
+  return(positional_mean_scores_abundance)
+}
+
+#find average score by position for activity and abundance maps
+activity_positional <- process_positional("SOD1A_unfloored.csv")
+abundance_positional <- process_positional("merged_map_unfloored.csv")
+
+#extract illumina scores by position, so extract position, then only include each position once
+#extract position
+regexp <- "[[:digit:]]+"
+illumina$from_aa <- str_extract(illumina$hgvs_pro, regexp)
+illumina$from_aa <- as.numeric(illumina$from_aa)
+illumina_simple <- illumina[!duplicated(illumina$from_aa),]
+
+#merge positional scores with illumina scores for both sets
+#merge scores
+activity_w_illumina_expression <- merge(activity_positional, illumina_simple, by = "from_aa")
+abundance_w_illumina_expression <- merge(abundance_positional, illumina_simple, by = "from_aa")
+
+r_value_pear_activity_expression <- cor(activity_w_illumina_expression$expression_score, activity_w_illumina_expression$score, method = "pearson")
+r_value_pear_abundance_expression <- cor(abundance_w_illumina_expression$expression_score, abundance_w_illumina_expression$score, method = "pearson")
+
+r_value_spear_activity_expression <- cor(activity_w_illumina$expression_score, activity_w_illumina$score, method = "spear")
+r_value_spear_abundance_expression <- cor(abundance_w_illumina$expression_score, abundance_w_illumina$score, method = "spear")
+
+#calculate linear regression
+lm_model <- lm(expression_score ~ score, data = activity_w_illumina_expression)
+summary(lm_model)
+
+#calculate linear regression
+lm_model <- lm(expression_score ~ score, data = abundance_w_illumina_expression)
+summary(lm_model)
+
+#scatter plot for activity assay
+compare_activity_illumina_expression <- ggplot(activity_w_illumina_expression, aes(x=expression_score, y=score)) + 
+  geom_point(alpha = 0.250) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "expression score (Illumina) positional", y = "activity map functional score (ours) positional") + 
+  theme_minimal(base_size = 15) 
+
+print(compare_activity_illumina_expression)
+
+#scatter plot for abundance assay
+compare_abundance_illumina_expression <- ggplot(abundance_w_illumina_expression, aes(x=expression_score, y=score)) + 
+  geom_point(alpha = 0.250) + 
+  geom_smooth(method = "lm", se = FALSE, color = "grey60", linewidth = 0.8) + 
+  labs(x = "expression score (Illumina) positional", y = "abundance map functional score (ours) positional") + 
+  theme_minimal(base_size = 15) 
+
+print(compare_abundance_illumina_expression)
+
+ggsave(compare_activity_illumina_expression, device = "pdf", filename = "activity_vs_illuminaExp.pdf", width = 5, height = 5)
+ggsave(compare_abundance_illumina_expression, device = "pdf", filename = "abundance_vs_illuminaExp.pdf", width = 5, height = 5)
+
+#save illumina dataset in correct format to run PRC curve
+illumina_PRC <- illumina[,c(1,2)]
+names(illumina_PRC)[names(illumina_PRC) == 'proliferation_score'] <- 'score'
+write.csv(illumina_PRC, "illumina_maveDB.csv", row.names = FALSE)
+
+#remove non-missense from map abundance to make it work in prc script
+abundance_map_simple <- read.csv("merged_map_unfloored_simple.csv")
+abundance_map_simple_test <- abundance_map_simple[!(grepl("=", abundance_map_simple$hgvs_pro) | grepl("Ter", abundance_map_simple$hgvs_pro)), ]
+write.csv(abundance_map_simple_test, "abundance_map_simple_missense.csv", row.names = FALSE)
+abundance_map_simple_test_min <- abundance_map_simple_test
+abundance_map_simple_test_min$score <- abundance_map_simple_test_min$score*-1
+write.csv(abundance_map_simple_test_min, "abundance_map_simple_missense_min.csv", row.names = FALSE)
+
+#make reference set on Illumina reference set use that instead
+illumina_test <- illumina
+illumina_test$label <- ifelse(illumina_test$label == "unobserved", "Negative", "Positive")
+names(illumina_test)[names(illumina_test) == 'label'] <- 'referenceSet'
+names(illumina_test)[names(illumina_test) == 'hgvs_pro'] <- 'hgvsp'
+illumina_test <- illumina_test[,c(1,13)]
+write.csv(illumina_test, "illumina_refSet.csv", row.names = FALSE)
+
+####Moving window with reference set 
+#Read the CSV files
+abundance_Map <- read.csv("~/Desktop/SOD1_manuscript/Compare_Illumina_map/merged_map_unfloored.csv")
+activity_map <- read.csv("~/Desktop/SOD1_Manuscript/Compare_Illumina_map/SOD1A_unfloored.csv")
+illumina_prolif <- read.csv("~/Desktop/SOD1_manuscript/Compare_Illumina_map/illumina_maveDB.csv")
+CPT_VEP <- read.csv("~/Desktop/SOD1_manuscript/20240601_CPT_maveDB.csv")
+#flip CPT so direction of damaging is the same as maps
+CPT_VEP$score <- CPT_VEP$score*-1
+
+
+# refSet <- read.csv("~/Desktop/SOD1_manuscript/Compare_Illumina_map/20250204_Invitae_gnomAD_refset.csv")
+# 
+# #Rename the first column in refSet
+# colnames(refSet)[1] <- "hgvs_pro"
+# 
+# #Merge datasets
+# Illumina_refSet <- merge(illumina_prolif, refSet, by = "hgvs_pro") 
+# Illumina_refSet <- Illumina_refSet[, c("hgvs_pro", "score", "referenceSet")]
+# Illumina_refSet$color <- ifelse(Illumina_refSet$referenceSet == "Positive", "#CD26F7", "#A2CD5A")
+# 
+# abundance_refSet <- merge(abundance_Map, refSet, by = "hgvs_pro")
+# abundance_refSet$color <- ifelse(abundance_refSet$referenceSet == "Positive", "#CD26F7", "#A2CD5A")
+# 
+# activity_refSet <- merge(activity_map, refSet, by = "hgvs_pro")
+# activity_refSet$color <- ifelse(activity_refSet$referenceSet == "Positive", "#CD26F7", "#A2CD5A")
+# 
+# CPT_refSet <- merge(CPT_VEP, refSet, by = "hgvs_pro")
+# CPT_refSet$color <- ifelse(CPT_refSet$referenceSet == "Positive", "#CD26F7", "#A2CD5A")
+# 
+# #Extract the numeric part of hgvs_pro for both datasets
+# Illumina_refSet$position <- as.numeric(gsub("[^0-9]", "", Illumina_refSet$hgvs_pro))
+# abundance_refSet$position <- as.numeric(gsub("[^0-9]", "", abundance_refSet$hgvs_pro))
+# activity_refSet$position <- as.numeric(gsub("[^0-9]", "", activity_refSet$hgvs_pro))
+# CPT_refSet$position <- as.numeric(gsub("[^0-9]", "", CPT_refSet$hgvs_pro))
+# 
+# #Define a function for moving window analysis
+# moving_window <- function(data, window_size) {
+#   data <- data %>% arrange(position)
+#   data <- data %>%
+#     group_by(referenceSet) %>%
+#     mutate(moving_avg = zoo::rollapply(score, width = window_size, FUN = mean, fill = NA, align = "center")) %>%
+#     ungroup()
+#   return(data)
+# }
+# 
+# #Apply the moving window function with a window size of 10
+# Illumina_refSet_window <- moving_window(Illumina_refSet, window_size = 10)
+# abundance_refSet_window <- moving_window(abundance_refSet, window_size = 10)
+# activity_refSet_window <- moving_window(activity_refSet, window_size = 10)
+# CPT_refSet_window <- moving_window(CPT_refSet, window_size = 10)
+# 
+# #Plot the results for CPT_refSet
+# plot_Illumina_window <- ggplot(Illumina_refSet_window, aes(x = position, y = moving_avg, color = referenceSet)) +
+#   geom_line() +
+#   theme_minimal() +
+#   labs(title = "Moving Window Analysis - Illumina_refSet", x = "Position in hgvs_pro", y = "Moving Average Score") +
+#   scale_color_manual(values = c("#A2CD5A", "#CD26F7"))
+# 
+# #Plot the results for abundance_refSet
+# plot_abundance_window <- ggplot(abundance_refSet_window, aes(x = position, y = moving_avg, color = referenceSet)) +
+#   geom_line() +
+#   theme_minimal() +
+#   labs(title = "Moving Window Analysis - abundance_refSet", x = "Position in hgvs_pro", y = "Moving Average Score") +
+#   scale_color_manual(values = c("#A2CD5A", "#CD26F7"))
+# 
+# #plot for activity map
+# plot_activity_window <- ggplot(activity_refSet_window, aes(x = position, y = moving_avg, color = referenceSet)) +
+#   geom_line() +
+#   theme_minimal() +
+#   labs(title = "Moving Window Analysis - activity_refSet", x = "Position in hgvs_pro", y = "Moving Average Score") +
+#   scale_color_manual(values = c("#A2CD5A", "#CD26F7"))
+# 
+# #plot for CPT
+# plot_CPT_window <- ggplot(CPT_refSet_window, aes(x = position, y = moving_avg, color = referenceSet)) +
+#   geom_line() +
+#   theme_minimal() +
+#   labs(title = "Moving Window Analysis - CPT_refSet", x = "Position in hgvs_pro", y = "Moving Average Score") +
+#   scale_color_manual(values = c("#A2CD5A", "#CD26F7"))
+# 
+# #print the plots
+# print(plot_Illumina_window)
+# print(plot_abundance_window)
+# print(plot_activity_window)
+# print(plot_CPT_window)
+# 
+# #save as pdf
+# ggsave(plot_Illumina_window, filename = "Illumina_moving_window.pdf", device = "pdf", width = 8, height = 3)
+# ggsave(plot_abundance_window, filename = "abundance_moving_window.pdf", device = "pdf", width = 8, height = 3)
+# ggsave(plot_activity_window, filename = "activity_moving_window.pdf", device = "pdf", width = 8, height = 3)
+# ggsave(plot_CPT_window, filename = "CPT_moving_window.pdf", device = "pdf", width = 8, height = 3)
+
+
+run_moving_window_analysis <- function(refset_file, illumina_prolif, abundance_Map, activity_map, CPT_VEP) {
+  library(ggplot2)
+  library(dplyr)
+  library(zoo)
+  
+  refSet <- read.csv(refset_file)
+  refset_name <- tools::file_path_sans_ext(basename(refset_file))
+  colnames(refSet)[1] <- "hgvs_pro"
+  
+  datasets <- list(
+    "Illumina" = illumina_prolif,
+    "Abundance" = abundance_Map,
+    "Activity" = activity_map,
+    "CPT" = CPT_VEP
+  )
+  
+  results <- lapply(names(datasets), function(name) {
+    merged_data <- merge(datasets[[name]], refSet, by = "hgvs_pro")
+    merged_data$color <- ifelse(merged_data$referenceSet == "Positive", "#CD26F7", "#A2CD5A")
+    merged_data$position <- as.numeric(gsub("[^0-9]", "", merged_data$hgvs_pro))
+    merged_data <- merged_data %>% arrange(position)
+    merged_data <- merged_data %>%
+      group_by(referenceSet) %>%
+      mutate(moving_avg = zoo::rollapply(score, width = 10, FUN = mean, fill = NA, align = "center")) %>%
+      ungroup()
+    
+    plot <- ggplot(merged_data, aes(x = position, y = moving_avg, color = referenceSet)) +
+      geom_line() +
+      theme_minimal() +
+      labs(title = paste("Moving Window Analysis -", name, "-", refset_name),
+           x = "Position in hgvs_pro", y = "Moving Average Score") +
+      scale_color_manual(values = c("#A2CD5A", "#CD26F7"))
+    
+    print(plot)
+    
+    plot_filename <- paste0(name, "_moving_window_", refset_name, ".pdf")
+    ggsave(plot, filename = plot_filename, device = "pdf", width = 8, height = 3)
+    
+    return(list(name = name, plot = plot, filename = plot_filename))
+  })
+  
+  return(results)
+}
+
+
+results1 <- run_moving_window_analysis("~/Desktop/SOD1_manuscript/Compare_Illumina_map/20250204_Invitae_gnomAD_refset.csv",
+                                       illumina_prolif, abundance_Map, activity_map, CPT_VEP)
+
+
+results2 <- run_moving_window_analysis("~/Desktop/SOD1_manuscript/Compare_Illumina_map/20241221_ClinVar_gnomAD_refset.csv",
+                                       illumina_prolif, abundance_Map, activity_map, CPT_VEP)
+
+
+
+####find intersection for PRC curve (find total number of reference variants in analysis)
+#find intersection between all of these in the hgvs_pro category
+AM <- read.csv("20240601_AM_maveDB.csv")
+CPT <- read.csv("20240601_CPT_maveDB.csv")
+#ESM scores have already been multiplied by -1 in this file
+ESM <- read.csv("20240601_ESM1B_maveDB.csv")
+VAR <- read.csv("20240601_varity_maveDB.csv")
+#remove NAs in varity
+VAR <- VAR[!is.na(VAR$score),]
+
+#read in maps
+abundance <- read.csv("merged_map_unfloored.csv")
+activity <- read.csv("SOD1A_unfloored.csv")
+illumina_prol <- read.csv("illumina_maveDB.csv")
+
+#read in refset
+RefSetInvitae <- read.csv("~/Desktop/SOD1_manuscript/Compare_Illumina_map/20250204_Invitae_gnomAD_refset.csv")
+#rename to hgvs_pro
+colnames(RefSetInvitae)[colnames(RefSetInvitae) == "hgvsp"] <- "hgvs_pro"
+
+#find intersection between all of these in the hgvs_pro category
+#inner joins to find the intersection
+intersection_refSetInvitae <- AM %>%
+  inner_join(CPT, by = "hgvs_pro") %>%
+  inner_join(ESM, by = "hgvs_pro") %>%
+  inner_join(VAR, by = "hgvs_pro") %>%
+  inner_join(abundance, by = "hgvs_pro") %>%
+  inner_join(activity, by = "hgvs_pro") %>%
+  inner_join(illumina_prol, by = "hgvs_pro") %>%
+  inner_join(RefSetInvitae, by = "hgvs_pro")
+
+#view intersection
+print(intersection_refSetInvitae)
+table(intersection_refSetInvitae$referenceSet)
+
+#launch scripts in terminal from link above for Jochen's PRC script. Here, to draw both maps on same plot, the one in the predictor section needed to be multiplied by -1.
+
+#draw PRC with invitae reference set
+#tsm drawPRC merged_map_unfloored.csv 20250204_Invitae_gnomAD_refset.csv --predictors activity_map_flipped.csv,illumina_flipped.csv,20240601_ESM1B_maveDB.csv,20240601_AM_maveDB.csv,20240601_varity_maveDB.csv,20240601_CPT_maveDB.csv --predictorNames activity_map,illumina_prol,ESM1b,alphaMissense,Varity,CPT
+
+
+```
+
+```{r alluvial_plot_evidenceStrengths, fig.show="hold", out.width="50%", echo=FALSE}
+#convert all abundance scores to evidence weights determined by LLR calculations using Jochen Weile's LLRp script: https://github.com/rothlab/docs/wiki/Translating-scores-to-pathogenicity-LLRs
+#LLRps were calculated with Invitae reference set. Script run to obtain thresholds below:
+#tsm calcLLR `--bandwidth 0.4` `--`printTransitions merged_map_unfloored.csv 20250204_Invitae_gnomAD_refset.csv --outlier suppression 1
+#tsm calcLLR `--bandwidth 0.4` `--`printTransitions merged_map_unfloored.csv 20250204_Invitae_gnomAD_refset.csv 
+#tsm calcLLR `--bandwidth 0.4` `--`printTransitions merged_map_unfloored.csv 20241221_ClinVar_gnomAD_refset.csv --outlier suppression 1
+
+LLRp_file_Invitae_outliersupp_1 <- read.csv("20250204_Invitae_gnomAD_refset_llr_outlierSupp1.csv")
+LLRp_file_Invitae <- read.csv("20250204_Invitae_gnomAD_refset_llr.csv")
+LLRp_file_ClinVar_outliersupp_1 <- read.csv("20241221_ClinVar_gnomAD_refset_llr_outlierSupp1.csv")
+
+#only consider missense variants
+LLRp_file_Invitae_outliersupp_1 <- LLRp_file_Invitae_outliersupp_1[!grepl("Ter|=", LLRp_file_Invitae_outliersupp_1$hgvs_pro),]
+LLRp_file_Invitae <- LLRp_file_Invitae[!grepl("Ter|=", LLRp_file_Invitae$hgvs_pro),]
+LLRp_file_ClinVar_outliersupp_1 <- LLRp_file_ClinVar_outliersupp_1[!grepl("Ter|=", LLRp_file_ClinVar_outliersupp_1$hgvs_pro),]
+
+#append the evidence weights
+LLRp_file_Invitae_outliersupp_1_ew <- LLRp_file_Invitae_outliersupp_1 %>%
+mutate(evidence_weight = case_when(
+score <= -2.272 ~ "undetermined",  
+score > -2.272 & score <= -1.494 ~ "patho.support",  
+score > -1.494 & score <= -0.207 ~ "patho.moderate",  
+score > -0.207 & score <= 0.048 ~ "patho.support",  
+score > 0.048 & score <= 0.997 ~ "undetermined",  
+score > 0.997 & score <= 1.992 ~ "benign.support", 
+score > 1.992 ~ "undetermined"
+))
+
+LLRp_file_Invitae_outliersupp_tosave <- LLRp_file_Invitae_outliersupp_1 %>%
+  mutate(evidence_weight = case_when(
+score <= -2.272 ~ "undetermined",  
+score > -2.272 & score <= -1.494 ~ "patho.support",  
+score > -1.494 & score <= -0.207 ~ "patho.moderate",  
+score > -0.207 & score <= 0.048 ~ "patho.support",  
+score > 0.048 & score <= 0.997 ~ "undetermined",  
+score > 0.997 & score <= 1.992 ~ "benign.support", 
+score > 1.992 ~ "undetermined"
+))
+
+LLRp_file_Invitae_ew <- LLRp_file_Invitae %>%
+mutate(evidence_weight = case_when(
+score <= -2.272 ~ "undetermined",  
+score > -2.272 & score <= -1.494 ~ "patho.support",  
+score > -1.494 & score <= -0.207 ~ "patho.moderate",  
+score > -0.207 & score <= 0.048 ~ "patho.support",  
+score > 0.048 & score <= 0.997 ~ "undetermined",  
+score > 0.997 & score <= 1.927 ~ "benign.support", 
+score > 1.927 ~ "undetermined"
+))
+
+LLRp_file_ClinVar_outliersupp_1_ew <- LLRp_file_ClinVar_outliersupp_1 %>%
+mutate(evidence_weight = case_when(
+score <= -2.337 ~ "undetermined",  
+score > -2.337 & score <= -2.179 ~ "patho.support",  
+score > -2.179 & score <= -0.313 ~ "patho.moderate",  
+score > -0.313 & score <= -0.040 ~ "patho.support",  
+score > -0.040 & score <= 1.108 ~ "undetermined",  
+score > 1.108 & score <= 1.918 ~ "benign.support", 
+score > 1.918 ~ "undetermined"
+))
+
+#count how much evidence strength given total to missense variants
+  print("evidence weight given to all variants invitae outlier supp 1")
+  print(table(LLRp_file_Invitae_outliersupp_1_ew$evidence_weight))
+  print("evidence weight given to all variants invitae")
+  print(table(LLRp_file_Invitae_ew$evidence_weight))
+  print("evidence weight given to all variants clinvar outlier supp 1")
+  print(table(LLRp_file_ClinVar_outliersupp_1_ew$evidence_weight))
+  
+#save LLRps with evidence strengths
+write.csv(LLRp_file_Invitae_outliersupp_1_ew, file = "LLRp_file_Invitae_outlier_supp1_ew.csv", row.names = FALSE)
+write.csv(LLRp_file_Invitae_ew, file = "LLRp_file_Invitae_ew.csv", row.names = FALSE)
+write.csv(LLRp_file_ClinVar_outliersupp_1_ew, file = "LLRp_file_ClinVar_outlier_supp1_ew.csv", row.names = FALSE)
+
+#save LLRps but dont give LLRps for nonsense and synonymous variants
+#don't give evidence to nonsense or synon variants
+LLRp_file_Invitae_outliersupp_tosave <- LLRp_file_Invitae_outliersupp_tosave %>%
+  mutate(across(c(llr, llrCI, evidence_weight), ~ ifelse(grepl("Ter|=", hgvs_pro), NA, .)))
+LLRp_file_Invitae_outliersupp_tosave$sd <- NULL
+#modify LLRCI column for MAVEdb upload 
+#remove square brackets
+LLRp_file_Invitae_outliersupp_tosave$llrCI <- gsub("\\[|\\]", "", LLRp_file_Invitae_outliersupp_tosave$llrCI)
+#separate into two columns
+LLRp_file_Invitae_outliersupp_tosave <- LLRp_file_Invitae_outliersupp_tosave %>%
+  separate(llrCI, into = c("llrCI_lower", "llrCI_upper"), sep = ";", convert = TRUE)
+#add NA categories for compatibility with MAVEdb upload
+write.csv(LLRp_file_Invitae_outliersupp_tosave, file = "LLRp_file_Invitae_outliersupp_tosave.csv", row.names = FALSE)
+
+
+#generate venn diagram types for all evidence types for all variants to see how many overlap given the thresholds
+generate_venn_diagrams <- function(evidence_types) {
+  for (evidence in evidence_types) {
+    # Subset data based on evidence type
+    clinvar_subset <- LLRp_file_ClinVar_outliersupp_1_ew[LLRp_file_ClinVar_outliersupp_1_ew$evidence_weight == evidence, ]
+    invitae_subset <- LLRp_file_Invitae_outliersupp_1_ew[LLRp_file_Invitae_outliersupp_1_ew$evidence_weight == evidence, ]
+    
+    # Create a named list with datasets
+    variant_list <- list(
+      clinvar = clinvar_subset$hgvs_pro,
+      invitae = invitae_subset$hgvs_pro
+    )
+    
+    # Generate Venn diagram
+    p <- ggvenn(variant_list, show_elements = FALSE, label_sep = "\n", fill_color = c("white", "white", "white"))
+    
+    # Save the plot
+    filename <- paste0("venn_", gsub("\\.", "", evidence), ".pdf")
+    ggsave(filename = filename, p, device = "pdf", width = 4, height = 4)
+  }
+}
+
+# Define evidence types and run the function
+evidence_types <- c("benign.support", "patho.moderate", "patho.support", "undetermined")
+generate_venn_diagrams(evidence_types)
+
+
+
+
+#read in all ClinVar missense variant entries with annotations, no matter the confidence of submission
+total_ClinVar <- read.csv("29Dec24_ClinVar_allAnnot.csv", header = TRUE)
+#G38R and L145F is in on ClinVar twice as a positive because it has two disease phenotypes but both are pathogenic, make it only mentioned once
+total_ClinVar <- total_ClinVar[!duplicated(total_ClinVar$Protein.change),]
+
+#Change variant notation to hgvs_pro
+names(total_ClinVar)[names(total_ClinVar) == 'Protein.change'] <- 'hgvs_pro'
+names(total_ClinVar)[names(total_ClinVar) == 'Germline.classification'] <- 'sig'
+#Change variant notation to hgvs_pro
+total_ClinVar$hgvs_pro <- mgsub(total_ClinVar$hgvs_pro, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                                      "G", "H", "I", "L", "K", "M", "F", "P",
+                                                                      "S", "T", "W", "Y", "V"), 
+                                 replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                                 "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                                 "Met", "Phe", "Pro", "Ser",
+                                                 "Thr", "Trp", "Tyr", "Val"))
+#add p. to notation
+total_ClinVar$hgvs_pro <- paste0("p.", total_ClinVar$hgvs_pro)
+
+#assign categories based on what the classification is on ClinVar
+total_ClinVar <- total_ClinVar %>%
+  mutate(type = case_when(
+    grepl("enign", total_ClinVar$sig) ~ "B/LB",
+    grepl("Conflicting", total_ClinVar$sig) ~ "Conflicting",
+    grepl("Uncertain", total_ClinVar$sig) ~ "VUS",
+    grepl("not provided", total_ClinVar$sig) ~ "NA",
+    TRUE ~ "P/LP" #Had to do this to include path, because the conflicts say "pathogenicity" in them
+  ))
+
+#Keep only required columns from clinvar then merge with known scores to see how the classifications are falling into categories in the map
+total_ClinVar <- total_ClinVar[, c("hgvs_pro", "type")]
+#add in proxy benigns from gnomAD
+#read in gnomAD data (extracted as of Dec 21, 2024)
+gnomAD_file <- read.csv("gnomAD_v4.1.0_ENSG00000142168_2024_12_21_18_13_00.csv", header = TRUE)
+#only extract missense variants
+gnomAD_file <- gnomAD_file[gnomAD_file$VEP.Annotation == "missense_variant",]
+#assess if variants have duplicates, confirm only one without any annotations remain for gnomAD proxy benign reference set
+duplicated_gnomAD <- gnomAD_file[duplicated(gnomAD_file$HGVS.Consequence),]
+print(duplicated_gnomAD)
+#p.Gln23His variant is duplicated, and in original dataset it both has a row without a classification and a row with. Eliminate from gnomad dataset. Eliminate "p.His72Gln" which is a VUS in clinvar but does not have annot in gnomAD
+gnomAD_file <- gnomAD_file[!gnomAD_file$HGVS.Consequence == "p.Gln23His",]
+gnomAD_file <- gnomAD_file[!gnomAD_file$HGVS.Consequence == "p.His72Gln",]
+#remove all others that have any ClinVar classification (there are no benigns anyway) 
+gnomAD_file <- gnomAD_file[gnomAD_file$ClinVar.Germline.Classification == "",]
+#format the ones that are gnomAD for appending to the reference set 
+gnomAD_negatives <- data.frame(hgvsp = gnomAD_file$Protein.Consequence, type = "proxy benign")
+colnames(gnomAD_negatives)[colnames(gnomAD_negatives) == "hgvsp"] <- "hgvs_pro"
+#append gnomAD proxy benigns to ClinVar set
+total_ClinVar_gnomAD_forAlluv <- rbind(total_ClinVar, gnomAD_negatives)
+#confirm there are no duplicated variants ("p.His72Gln" was a VUS in ClinVar at the time, but had no annotation in gnomAD. It was eliminated in earlier script.)
+duplicates_test <- total_ClinVar_gnomAD_forAlluv$hgvs_pro[duplicated(total_ClinVar_gnomAD_forAlluv$hgvs_pro)]
+print(duplicates_test)
+
+generate_alluvial_plot <- function(score_file_ew, file_name) {
+  # Merge the total_ClinVar with the LLR values
+  clinvar_annotated_variants <- merge(total_ClinVar_gnomAD_forAlluv, score_file_ew, by = "hgvs_pro")
+  
+  # How much of the total_ClinVar was included?
+  cat("Proportion ClinVar set included:", nrow(clinvar_annotated_variants) / nrow(total_ClinVar_gnomAD_forAlluv), "\n")
+  
+  # Color-blind friendly color palette from RColorBrewer
+  color_palette <- brewer.pal(7, "Paired")
+  
+  # Reorder the evidence_weight factor
+  clinvar_annotated_variants$evidence_weight <- fct_relevel(clinvar_annotated_variants$evidence_weight, 
+                                                             "benign.support", "patho.support", "patho.moderate", 
+                                                             "patho.strong", "patho.vstrong", "undetermined")
+  
+  # Save merged data
+  write.csv(clinvar_annotated_variants, file = paste0(file_name, "_withScores.csv"), row.names = FALSE)
+  
+    #count variants given different evidence weights
+  print("evidence weight given to variants in clinvar or proxy ben set")
+  print(table(clinvar_annotated_variants$evidence_weight))
+  
+  # Extract VUS variants
+  VUS <- clinvar_annotated_variants[clinvar_annotated_variants$type == "VUS", ]
+  print("evidence weight given to VUS")
+  print(table(VUS$evidence_weight))
+  
+  #assign colours to evidence weights
+color_palette <- c(
+  "benign.support" = "#58A136",    
+  "patho.support" = "#8F60D6",     
+  "patho.moderate" = "#6327D6",   
+  "undetermined" = "#ABABAB"       
+)
+
+  #plot alluvial diagram
+    p <- ggplot(data = clinvar_annotated_variants,
+              aes(axis1 = type,   
+                  axis2 = evidence_weight)) + 
+    geom_alluvium(aes(fill = evidence_weight), show.legend = FALSE) +
+    geom_stratum(aes(fill = evidence_weight)) +  
+    geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    geom_text_repel(stat = "stratum", aes(label = paste("n=", after_stat(n))), 
+                    nudge_y = -0.1, segment.color = "transparent") +
+    scale_fill_manual(values = color_palette) + 
+    theme_void()
+
+  
+  # Save and display the plot
+  ggsave(filename = paste0(file_name, "_alluvial.pdf"), p, width = 8, height = 7)
+  print(p)
+}
+
+generate_alluvial_plot(LLRp_file_Invitae_outliersupp_1_ew, "LLRp_file_Invitae_outliersupp_1_ew")
+generate_alluvial_plot(LLRp_file_Invitae_ew, "LLRp_file_Invitae_ew")
+generate_alluvial_plot(LLRp_file_ClinVar_outliersupp_1_ew, "LLRp_file_ClinVar_outliersupp_1_ew")
+
+ClinVarOnlyVariants_ClinVarRefSet <- merge(total_ClinVar_gnomAD_forAlluv, LLRp_file_ClinVar_outliersupp_1_ew, by = "hgvs_pro")
+ClinVarOnlyVariants_InvitaeRefSet <- merge(total_ClinVar_gnomAD_forAlluv, LLRp_file_Invitae_outliersupp_1_ew, by = "hgvs_pro")
+
+#generate venn diagram types for all evidence types for all ClinVar only  variants to see how many overlap given the thresholds
+generate_venn_diagrams_ClinVaronly <- function(evidence_types) {
+  for (evidence in evidence_types) {
+    # Subset data based on evidence type
+    clinvar_subset <- ClinVarOnlyVariants_ClinVarRefSet[ClinVarOnlyVariants_ClinVarRefSet$evidence_weight == evidence, ]
+    invitae_subset <- ClinVarOnlyVariants_InvitaeRefSet[ClinVarOnlyVariants_InvitaeRefSet$evidence_weight == evidence, ]
+    
+    # Create a named list with datasets
+    variant_list <- list(
+      clinvar = clinvar_subset$hgvs_pro,
+      invitae = invitae_subset$hgvs_pro
+    )
+    
+    # Generate Venn diagram
+    p <- ggvenn(variant_list, show_elements = FALSE, label_sep = "\n", fill_color = c("white", "white", "white"))
+    
+    # Save the plot
+    filename <- paste0("venn_ClinVarVarOnly_", gsub("\\.", "", evidence), ".pdf")
+    ggsave(filename = filename, p, device = "pdf", width = 4, height = 4)
+  }
+}
+
+# Define evidence types and run the function
+evidence_types <- c("benign.support", "patho.moderate", "patho.support", "undetermined")
+generate_venn_diagrams_ClinVaronly(evidence_types)
+```
+
+```{r dimer_interfaces_assign_LLRps_then_mark_as_delet_or_not_for_venn_diagram[Fix_Issues]}
+#load in the list of intersecting variants
+#remove the p. from each 
+DI <- read.csv("Residues_SOD1_Interface.csv")
+colnames(DI)[2] <- "from_aa"
+
+CCSimm <- read.csv("Residues_SOD1CCS_Intermediate.csv")
+colnames(CCSimm)[2] <- "from_aa"
+
+CCS <- read.csv("Residues_SOD1CCS_Mature.csv")
+colnames(CCS)[2] <- "from_aa"
+
+#create a named list with the datasets
+x <- list(DI = DI$hgvs_pro, CCSimm = CCSimm$hgvs_pro, 
+          CCS = CCS$hgvs_pro)
+
+Reduce(intersect, list(CCS$hgvs_pro,DI$hgvs_pro,CCSimm$hgvs_pro))
+
+#remove those that aren't real manually
+p <- ggvenn(x, show_elements = T, label_sep = "\n", fill_color = c("white", "white", "white"))
+ggsave(filename ="venn_CCS_Interfaces.pdf", p, device = "pdf", width = 8, height =8)
+
+#histogram of missense variants for activity
+positional_activity_missense <- ggplot(activity_positional, aes(x=score)) + 
+  geom_histogram(bins = 70)+
+  theme_minimal(base_size = 15)
+#histogram of missense variants for abundance
+positional_abundance_missense <- ggplot(abundance_positional, aes(x=score)) + 
+  geom_histogram(bins = 70)+
+  theme_minimal(base_size = 15)
+
+#print to console
+print(positional_activity_missense)
+print(positional_abundance_missense)
+
+#save plots
+ggsave(positional_activity_missense, device = "pdf", filename = "activity_dist_missense_positional.pdf", width = 5, height = 5)
+ggsave(positional_abundance_missense, device = "pdf", filename = "abundance_dist_missense_positional.pdf", width = 5, height = 5)
+
+#find out positions which are damaging by position
+#edit venn diagram on illustrator to paint each variant with whether it is damaging or not
+#these were the cutoffs used for scores based on the positional variant distributions
+damaging_positional_activity <- activity_positional[activity_positional$score < 0.5,]
+damaging_positional_abundance <- abundance_positional[abundance_positional$score < -0.4,]
+#sort numerically
+damaging_positional_activity <- damaging_positional_activity[order(damaging_positional_activity$from_aa),]
+damaging_positional_abundance <- damaging_positional_abundance[order(damaging_positional_abundance$from_aa),]
+
+#save these cutoffs
+write.csv(damaging_positional_activity, "activity_damaging_variants_positionally.csv", row.names = FALSE)
+write.csv(damaging_positional_abundance, "abundance_damaging_variants_positionally.csv", row.names = FALSE)
+
+#painted each of the variants with damaging/nondamaging annotations in illustrator to make Figure 2C
+```
+
+```{r oddsRatio, fig.show="hold", out.width="50%", echo=FALSE}
+# Calculate log odds ratios and CIs correctly, including log-transformation of CI
+calculate_log_odds_ci <- function(sod1_data, human_pop_data, deleterious_threshold, neutral_threshold) {
+  # Filter for deleterious and neutral variants
+  deleterious_variants <- sod1_data %>%
+    filter(score < deleterious_threshold) %>%
+    select(hgvs_pro)
+  
+  neutral_variants <- sod1_data %>%
+    filter(score > neutral_threshold) %>%
+    select(hgvs_pro)
+  
+  # Count of observed and expected variants
+  observed_del_in_population <- sum(deleterious_variants$hgvs_pro %in% human_pop_data$hgvs_pro)
+  total_del_variants <- nrow(deleterious_variants)
+  expected_del_in_population <- (nrow(human_pop_data) / nrow(sod1_data)) * total_del_variants
+  
+  observed_neu_in_population <- sum(neutral_variants$hgvs_pro %in% human_pop_data$hgvs_pro)
+  total_neu_variants <- nrow(neutral_variants)
+  expected_neu_in_population <- (nrow(human_pop_data) / nrow(sod1_data)) * total_neu_variants
+  
+  # Contingency tables for deleterious and neutral variation
+  del_table <- matrix(
+    c(observed_del_in_population, total_del_variants - observed_del_in_population, 
+      expected_del_in_population, total_del_variants - expected_del_in_population),
+    nrow = 2, byrow = TRUE
+  )
+  
+  neu_table <- matrix(
+    c(observed_neu_in_population, total_neu_variants - observed_neu_in_population,
+      expected_neu_in_population, total_neu_variants - expected_neu_in_population),
+    nrow = 2, byrow = TRUE
+  )
+  
+  # Contingency table check:
+  print("Deleterious Contingency Table:")
+  print(del_table)
+  
+  print("Neutral Contingency Table:")
+  print(neu_table)
+  
+  # Calculation of log odds ratios
+  log_odds_ratio_del <- log((del_table[1, 1] * del_table[2, 2]) / (del_table[1, 2] * del_table[2, 1]))
+  log_odds_ratio_neu <- log((neu_table[1, 1] * neu_table[2, 2]) / (neu_table[1, 2] * neu_table[2, 1]))
+  
+  # Confidence intervals (log-transformed)
+  fisher_del <- fisher.test(del_table)
+  fisher_neu <- fisher.test(neu_table)
+  
+  log_odds_ratio_del_ci <- log(fisher_del$conf.int)
+  log_odds_ratio_neu_ci <- log(fisher_neu$conf.int)
+  
+  # Check of log odds ratios and confidence intervals
+  print(paste("Log Odds Ratio for Deleterious Variants:", log_odds_ratio_del))
+  print(paste("Log Odds Ratio for Neutral Variants:", log_odds_ratio_neu))
+  print("CI for Deleterious Variants (log-transformed):")
+  print(log_odds_ratio_del_ci)
+  print("CI for Neutral Variants (log-transformed):")
+  print(log_odds_ratio_neu_ci)
+  
+  return(list(
+    log_odds_del = log_odds_ratio_del, 
+    log_odds_neu = log_odds_ratio_neu,
+    ci_del = log_odds_ratio_del_ci,  
+    ci_neu = log_odds_ratio_neu_ci  
+  ))
+}
+
+#read both UK Biobank and gnomAD datasets and process
+UKBiobank <- fread("~/Desktop/SOD1_Manuscript/SOD1_UKB_VARS.csv")
+UKBiobank$hgvs_pro <- paste0(substr(UKBiobank$Amino_acids, 1, 1), 
+                             UKBiobank$Protein_position, 
+                             substr(UKBiobank$Amino_acids, nchar(UKBiobank$Amino_acids), nchar(UKBiobank$Amino_acids)))
+UKBiobank$hgvs_pro <- mgsub(UKBiobank$hgvs_pro,
+                            pattern = c("A", "R", "N", "D", "C", "Q", "E", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"),
+                            replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln", "Glu", "Gly", "His", "Ile", "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val"))
+UKBiobank$hgvs_pro <- paste0("p.", UKBiobank$hgvs_pro)
+
+#keep only distinct variation
+UKBiobank <- UKBiobank %>% distinct(hgvs_pro, .keep_all = TRUE)
+UKBiobank <- UKBiobank[, c("hgvs_pro", "UKB_AF")]
+colnames(UKBiobank)[2] <- "frequency"
+
+gnomad <- fread("~/Desktop/SOD1_Manuscript/gnomAD_SOD1.csv")
+colnames(gnomad)[14] <- "type"
+colnames(gnomad)[12] <- "hgvs_pro"
+colnames(gnomad)[20] <- "frequency"
+gnomad <- gnomad %>% filter(type == "missense_variant") %>%
+  select(hgvs_pro, frequency)
+
+#for gnomad p.Gln23His duplicated, keep more common one
+gnomad <- gnomad %>% distinct(hgvs_pro, .keep_all = TRUE)
+HumanPop_Frequency <- rbind(gnomad, UKBiobank) %>%
+  distinct(hgvs_pro, .keep_all = TRUE)
+
+#read SOD1 activity (yeast based-complementation assay) and abundance (human cell-based assay) data
+activity <- fread("~/Desktop/SOD1_Manuscript/SOD1A_unfloored.csv")
+abundance <- fread("~/Desktop/SOD1_Manuscript/merged_map_unfloored.csv")
+
+# Score thresholds
+deleterious_threshold <- 0.335
+neutral_threshold <- 0.659
+
+# Calculate log odds ratios and CI for activity and abundance data
+log_odds_yeast <- calculate_log_odds_ci(activity, HumanPop_Frequency, deleterious_threshold, neutral_threshold)
+log_odds_human <- calculate_log_odds_ci(abundance, HumanPop_Frequency, deleterious_threshold, neutral_threshold)
+
+log_odds_data <- data.frame(
+  category = rep(c("activity", "abundance"), each = 2),
+  Type = rep(c("deleterious", "neutral"), times = 2),
+  Log_Odds = c(log_odds_yeast$log_odds_del, log_odds_yeast$log_odds_neu, log_odds_human$log_odds_del, log_odds_human$log_odds_neu),
+  CI_Lower = c(log_odds_yeast$ci_del[1], log_odds_yeast$ci_neu[1], log_odds_human$ci_del[1], log_odds_human$ci_neu[1]),
+  CI_Upper = c(log_odds_yeast$ci_del[2], log_odds_yeast$ci_neu[2], log_odds_human$ci_del[2], log_odds_human$ci_neu[2])
+)
+
+# pointrange odds ratio
+pointRangeOdds <- ggplot(log_odds_data, aes(x = Type, y = Log_Odds)) +
+  geom_pointrange(
+    aes(ymin = CI_Lower, ymax = CI_Upper, color = category),
+    position = position_dodge(0.9),
+    size = 0.2
+  ) +
+  scale_color_manual(values = c("activity" = "#A567AB", "abundance" = "black")) + # Specify colors
+  scale_x_discrete(limits = unique(log_odds_data$Type)) +
+  labs(y = "log odds ratio", x = "variant type") +
+  theme_minimal(base_size = 17) +
+  coord_flip()
+
+print(pointRangeOdds)
+
+ggsave("pointRangeOdds.pdf", pointRangeOdds, device = "pdf", width = 8, height = 2.5)
+```
+
+```{r extract_score_by_change_To, fig.show="hold", out.width="50%", echo=FALSE}
+#Extract median scores of changeTo column 
+median_scores_activity_to <- activity_processed %>%
+  group_by(changeTo) %>%
+  summarise(median_score_activity_to = median(score, na.rm = TRUE))
+
+median_scores_abundance_to <- abundance_processed %>%
+  group_by(changeTo) %>%
+  summarise(median_score_abundance_to = median(score, na.rm = TRUE))
+
+#read Dunham data
+Dunham <- read.table("datasetEV2.tsv", header = TRUE, fill = TRUE)
+#Get the medians of each amino acid category
+AminoAcidChangesDunham <- Dunham[,c(4:24)]
+#Replace all syn changes to NA
+# Loop over each row to replace matching values with NA
+for (i in 1:nrow(AminoAcidChangesDunham)) {
+  wt_col <- AminoAcidChangesDunham$wt[i] # Get the 'wt' value for the row
+  if (wt_col %in% names(AminoAcidChangesDunham)) {
+    AminoAcidChangesDunham[i, wt_col] <- NA # Replace matching column with NA
+  }
+}
+
+# Display the result
+head(AminoAcidChangesDunham)
+
+AminoAcidChangesDunham_OnlyVariants <- AminoAcidChangesDunham[,c(-1)]
+
+#calculate the median for each amino acid, ignoring NA values
+median_df <- AminoAcidChangesDunham_OnlyVariants %>%
+  summarise(across(everything(), ~ median(.x, na.rm = TRUE))) %>%
+  pivot_longer(everything(), names_to = "changeTo", values_to = "median_dunham_to")
+
+#print the resulting DataFrame
+print(median_df)
+
+#rename the amino acids
+median_df$changeTo <- mgsub(median_df$changeTo, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                      "G", "H", "I", "L", "K", "M", "F", "P",
+                                                    "S", "T", "W", "Y", "V"), 
+                         replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                         "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                         "Met", "Phe", "Pro", "Ser", 
+                                         "Thr", "Trp", "Tyr", "Val"))
+
+#combine map data and dunham scores
+aggregate_dunham_maps_toAAscores <- merge(median_df, median_scores_activity_to, by = "changeTo")
+aggregate_dunham_maps_toAAscores <- merge(aggregate_dunham_maps_toAAscores, median_scores_abundance_to, by = "changeTo")
+
+#draw correlations and test significance for all categories
+#define the function to calculate correlation and plot
+compare_variables <- function(data, var1, var2, label_var, filename) {
+  # Calculate the correlation and p-value
+  cor_test <- cor.test(data[[var1]], data[[var2]], method = "spearman")
+  
+  # Extract the correlation and p-value
+  correlation <- cor_test$estimate
+  p_value <- cor_test$p.value
+  
+  # Create the plot
+  p <- ggplot(data, aes_string(x = var1, y = var2)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", se = FALSE, colour = "grey") +
+    theme_minimal(base_size = 21) +
+    labs(x = var1, y = var2) +
+    geom_text_repel(aes_string(label = label_var), size = 6, max.overlaps = 20) +
+    ggtitle(paste("Correlation:", round(correlation, 3), 
+                   "P-value:", format.pval(p_value, digits = 3, format = "e")))
+  #print plot
+  print(p)
+  # Save the plot
+  ggsave(filename = filename, plot = p, width = 6, height = 5)
+  
+  return(list(correlation = correlation, p_value = p_value))
+}
+
+# List of variable pairs to compare
+variable_pairs <- list(
+  c("median_score_activity_to", "median_dunham_to"),
+  c("median_score_activity_to", "median_score_abundance_to"),
+  c("median_score_abundance_to", "median_dunham_to")
+)
+
+# Iterate over each pair and run the comparison
+results <- list()
+for (pair in variable_pairs) {
+  var1 <- pair[1]
+  var2 <- pair[2]
+  label_var <- "changeTo"
+  filename <- paste0("compare_", var1, "_", var2, ".pdf")
+  
+  # Call the comparison function
+  result <- compare_variables(aggregate_dunham_maps_toAAscores, var1, var2, label_var, filename)
+  
+  # Store the results
+  results[[paste(var1, var2, sep = "_")]] <- result
+}
+
+# Print results
+print(results)
+
+```
+
+```{r extract_score_by_change_from_aa, fig.show="hold", out.width="50%", echo=FALSE}
+#Extract median scores of from column 
+median_scores_activity_to_from <- activity_processed %>%
+  group_by(from) %>%
+  summarise(median_score = median(score, na.rm = TRUE))
+
+median_scores_abundance_to_from <- abundance_processed %>%
+  group_by(from) %>%
+  summarise(median_score = median(score, na.rm = TRUE))
+
+#read Dunham data
+Dunham <- read.table("datasetEV2.tsv", header = TRUE, fill = TRUE)
+#Get the medians of each row with the same WT, but remove WT that matches column
+
+AminoAcidChangesDunham_w_WT <- Dunham[,c(4:24)]
+#Replace all syn changes to NA
+# Loop over each row to replace matching values with NA (this essentially hides the synonymous variants from contributing to the scores)
+for (i in 1:nrow(AminoAcidChangesDunham_w_WT)) {
+  wt_col <- AminoAcidChangesDunham_w_WT$wt[i] # Get the 'wt' value for the row
+  if (wt_col %in% names(AminoAcidChangesDunham_w_WT)) {
+    AminoAcidChangesDunham_w_WT[i, wt_col] <- NA # Replace matching column with NA
+  }
+}
+
+#Calculate median for each original amino acid
+median_per_original_aas_dunham <- AminoAcidChangesDunham_w_WT %>%
+  group_by(wt) %>%
+  summarize(median_score = median(as.numeric(unlist(pick(everything()))), na.rm = TRUE))
+# View summary
+print(median_per_original_aas_dunham)
+
+#change format of amino acid code to compatible with other one
+median_per_original_aas_dunham$wt <- mgsub(median_per_original_aas_dunham$wt, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                      "G", "H", "I", "L", "K", "M", "F", "P",
+                                                    "S", "T", "W", "Y", "V"), 
+                         replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                         "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                         "Met", "Phe", "Pro", "Ser", 
+                                         "Thr", "Trp", "Tyr", "Val"))
+#rename wt column and columns so they all have the right name after merging
+names(median_per_original_aas_dunham)[names(median_per_original_aas_dunham) == 'wt'] <- 'from'
+names(median_per_original_aas_dunham)[names(median_per_original_aas_dunham) == 'median_score'] <- 'dunham_fromAA'
+names(median_scores_activity_to_from)[names(median_scores_activity_to_from) == 'median_score'] <- 'activity_score_fromAA'
+names(median_scores_abundance_to_from)[names(median_scores_abundance_to_from) == 'median_score'] <- 'abundance_score_fromAA'
+
+#combine all datasets
+aggregate_dunham_maps_fromAAscores <- merge(median_per_original_aas_dunham, median_scores_activity_to_from, by = "from")
+aggregate_dunham_maps_fromAAscores <- merge(aggregate_dunham_maps_fromAAscores, median_scores_abundance_to_from, by = "from")
+
+
+# Define the function to calculate correlation and plot
+compare_variables_fromAA <- function(data, var1, var2, label_var, filename) {
+  # Calculate the correlation and p-value
+  cor_test <- cor.test(data[[var1]], data[[var2]], method = "spearman")
+  
+  # Extract the correlation and p-value
+  correlation <- cor_test$estimate
+  p_value <- cor_test$p.value
+  
+  # Create the plot
+  p <- ggplot(data, aes_string(x = var1, y = var2)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", se = FALSE, colour = "grey") +
+    theme_minimal(base_size = 21) +
+    labs(x = var1, y = var2) +
+    geom_text_repel(aes_string(label = label_var), size = 6, max.overlaps = 20) +
+    ggtitle(paste("Correlation:", round(correlation, 3), 
+                   "P-value:", format.pval(p_value, digits = 3, format = "e")))
+  #print plot
+  print(p)
+  # Save the plot
+  ggsave(filename = filename, plot = p, width = 6, height = 5)
+  
+  return(list(correlation = correlation, p_value = p_value))
+}
+
+# List of variable pairs to compare
+variable_pairs <- list(
+  c("activity_score_fromAA", "dunham_fromAA"),
+  c("activity_score_fromAA", "abundance_score_fromAA"),
+  c("abundance_score_fromAA", "dunham_fromAA")
+)
+
+# Iterate over each pair and run the comparison
+results <- list()
+for (pair in variable_pairs) {
+  var1 <- pair[1]
+  var2 <- pair[2]
+  label_var <- "from"
+  filename <- paste0("compare_originalAAs", var1, "_", var2, ".pdf")
+  
+  # Call the comparison function
+  result <- compare_variables_fromAA(aggregate_dunham_maps_fromAAscores, var1, var2, label_var, filename)
+  
+  # Store the results
+  results[[paste(var1, var2, sep = "_")]] <- result
+}
+
+# Print results
+print(results)
+
+```
+
+```{r genopheno_Opie_Martin_2022}
+#Correlations between variant scores and data from Opie Martin et al. 2022
+opie_ageOnset <- read.csv("opie_martin_2022_age_onset.csv")
+opie_duration <- read.csv("opie_martin_2022_disease_duration.csv")
+
+#change format of amino acid code to compatible with other one
+opie_ageOnset$hgvs_pro <- mgsub(opie_ageOnset$hgvs_pro, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                      "G", "H", "I", "L", "K", "M", "F", "P",
+                                                    "S", "T", "W", "Y", "V"), 
+                         replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                         "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                         "Met", "Phe", "Pro", "Ser", 
+                                         "Thr", "Trp", "Tyr", "Val"))
+opie_ageOnset$hgvs_pro <- paste0("p.", opie_ageOnset$hgvs_pro)
+#Calculate median for each hgvs_pro
+opieMedians_ageofOnset <- opie_ageOnset %>%
+  group_by(hgvs_pro) %>%
+    summarize(median_score = median(age_onset, na.rm = TRUE))
+#add column to specify category
+opieMedians_ageofOnset$category <- "age_of_onset"
+
+#do same for duration category
+opie_duration$hgvs_pro <- mgsub(opie_duration$hgvs_pro, pattern = c("A", "R", "N", "D", "C", "Q", "E", 
+                                                      "G", "H", "I", "L", "K", "M", "F", "P",
+                                                    "S", "T", "W", "Y", "V"), 
+                         replacement = c("Ala", "Arg", "Asn", "Asp", "Cys", "Gln",
+                                         "Glu", "Gly", "His", "Ile", "Leu", "Lys",
+                                         "Met", "Phe", "Pro", "Ser", 
+                                         "Thr", "Trp", "Tyr", "Val"))
+opie_duration$hgvs_pro <- paste0("p.", opie_duration$hgvs_pro)
+#Calculate median for each hgvs_pro
+opieMedians_duration <- opie_duration %>%
+  group_by(hgvs_pro) %>%
+    summarize(median_score = median(disease_duration, na.rm = TRUE))
+opieMedians_duration$category <- "duration"
+
+#merge opie data
+opie_combined <- rbind(opieMedians_ageofOnset, opieMedians_duration)
+opie_combined <- as.data.frame(opie_combined)
+
+# Rename for merging
+activity_map_genopheno <- activity
+abundance_map_genopheno <- abundance
+
+names(activity_map_genopheno)[names(activity_map_genopheno) == "score"] <- 'activity_score'
+activity_map_genopheno <- activity_map_genopheno %>% select(-c("se", "df"))
+
+names(abundance_map_genopheno)[names(abundance_map_genopheno) == "score"] <- 'abundance_score'
+abundance_map_genopheno <- abundance_map_genopheno %>% select(-c("se", "df", "sd"))
+
+merged_opie <- merge(abundance_map_genopheno, opie_combined, by = "hgvs_pro", all.y = TRUE)
+merged_opie <- merge(merged_opie, activity_map_genopheno, by = "hgvs_pro", all.x = TRUE)
+
+# Define a function to plot regression lines for a given category
+plot_regression <- function(category) {
+  category_data <- merged_opie[merged_opie$category == category, ]
+  
+  # Calculate correlation coefficients and p-values
+  cor_human <- cor.test(category_data$median_score, category_data$abundance_score, method = "spearman")
+  cor_yeast <- cor.test(category_data$median_score, category_data$activity_score, method = "spearman")
+  
+  # Adjust p-values using Bonferroni method
+  num_tests <- 2  # number of tests (2 correlations per category)
+  bonferroni_adj_p_human <- p.adjust(cor_human$p.value, method = "bonferroni", n = num_tests)
+  bonferroni_adj_p_yeast <- p.adjust(cor_yeast$p.value, method = "bonferroni", n = num_tests)
+  
+  # Create the plot
+  y_axis_label <- ifelse(category == "age_of_onset", "years", "months" )
+  
+  plot <- ggplot(category_data, aes(x = abundance_score, y = median_score, color = "Abundance")) +
+    geom_point() +
+    geom_smooth(method = "lm", aes(x = abundance_score, y = median_score, color = "Abundance")) +
+    geom_point(aes(x = activity_score, y = median_score, color = "Enzymatic Activity")) +
+    geom_smooth(method = "lm", aes(x = activity_score, y = median_score, color = "Enzymatic Activity")) +
+    labs(title = paste("Category:", category),
+         x = "Score",
+         y = y_axis_label,
+         color = "Score Type") +
+    theme_minimal(base_size = 17) +
+    theme(legend.position = "right")
+  
+  # Print correlation coefficients and p-values to console
+  cat("Category:", category, "\n")
+  cat("Abundance Correlation Coefficient:", cor_human$estimate, ", p-value:", cor_human$p.value, ", Bonferroni adj. p-value:", bonferroni_adj_p_human, "\n")
+  cat("Enzymatic Activity Correlation Coefficient:", cor_yeast$estimate, ", p-value:", cor_yeast$p.value, ", Bonferroni adj. p-value:", bonferroni_adj_p_yeast, "\n\n")
+  
+  # Save correlation coefficients and p-values to CSV file
+  correlation_data <- data.frame(Category = category, 
+                                ScoreType = c("Abundance", "Enzymatic Activity"), 
+                                CorrelationCoefficient = c(cor_human$estimate, cor_yeast$estimate), 
+                                pValue = c(cor_human$p.value, cor_yeast$p.value), 
+                                BonferroniAdjPValue = c(bonferroni_adj_p_human, bonferroni_adj_p_yeast))
+  
+  return(list(plot, correlation_data))
+}
+
+plot_regression("duration")
+plot_regression("age_of_onset")
+
+duration_only <- merged_opie[merged_opie$category == "duration", ]
+onset_only <- merged_opie[merged_opie$category == "age_of_onset", ]
+
+  plot_dur <- ggplot(duration_only, aes(x = abundance_score, y = median_score, color = "Abundance")) +
+    geom_point() +
+    geom_smooth(method = "lm", aes(x = abundance_score, y = median_score, color = "Abundance")) +
+    geom_point(aes(x = activity_score, y = median_score, color = "Enzymatic Activity")) +
+    geom_smooth(method = "lm", aes(x = activity_score, y = median_score, color = "Enzymatic Activity")) +
+    labs(title = paste("Category:", "duration"),
+         x = "Score",
+         y = "months",
+         color = "Score Type") +
+    theme_minimal(base_size = 17) +
+    theme(legend.position = "right")
+  
+    plot_age <- ggplot(onset_only, aes(x = abundance_score, y = median_score, color = "Abundance")) +
+    geom_point() +
+    geom_smooth(method = "lm", aes(x = abundance_score, y = median_score, color = "Abundance")) +
+    geom_point(aes(x = activity_score, y = median_score, color = "Enzymatic Activity")) +
+    geom_smooth(method = "lm", aes(x = activity_score, y = median_score, color = "Enzymatic Activity")) +
+    labs(title = paste("Category:", "age_of_onset"),
+         x = "Score",
+         y = "age of onset",
+         color = "Score Type") +
+    theme_minimal(base_size = 17) +
+    theme(legend.position = "right")
+    
+    print(plot_dur)
+    print(plot_age)
+    
+      # Calculate correlation coefficients and p-values
+  cor_abund_duration <- cor.test(duration_only$median_score, duration_only$abundance_score, method = "spearman")
+  cor_activity_duration <- cor.test(duration_only$median_score, duration_only$activity_score, method = "spearman")
+    cor_abund_age <- cor.test(onset_only$median_score, onset_only$abundance_score, method = "spearman")
+  cor_activity_age <- cor.test(onset_only$median_score, onset_only$activity_score, method = "spearman")
+    
+# Iterate through all categories
+categories <- unique(merged_opie$category)
+correlation_data_list <- list()
+for (category in categories) {
+  result <- plot_regression(category)
+  print(result[[1]])
+  correlation_data_list <- c(correlation_data_list, list(result[[2]]))
+  ggsave(filename = paste("plot_", category, ".pdf", sep = ""), width = 6, height = 4, device = "pdf")
+}
+
+# Write correlation data to CSV file
+correlation_data_opie <- do.call(rbind, correlation_data_list)
+write.csv(correlation_data_opie, "correlation_coefficients_opie.csv", row.names = FALSE)
+```
+
+
+
+
